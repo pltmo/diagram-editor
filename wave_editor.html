@@ -1,0 +1,2724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Timing Diagram Editor</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap');
+
+  :root {
+    --bg:       #1c1f26;
+    --panel:    #22262f;
+    --border:   #2e3340;
+    --surface:  #191c23;
+    --accent:   #4d8ef0;
+    --accent-h: #3a7adc;
+    --text:     #d4d8e2;
+    --muted:    #616980;
+    --label:    #9aa3b8;
+    --danger:   #e05c5c;
+    --code-bg:  #1a2235;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 16px;
+    height: 46px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  header h1 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  header h1 span { color: var(--accent); }
+
+  .sep { width: 1px; height: 18px; background: var(--border); margin: 0 2px; }
+  .sub { font-size: 11px; color: var(--muted); }
+
+  .toolbar { display: flex; gap: 5px; margin-left: auto; align-items: center; }
+
+  button {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--label);
+    font-family: 'Inter', sans-serif;
+    font-size: 11.5px;
+    font-weight: 500;
+    padding: 4px 11px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s;
+    white-space: nowrap;
+  }
+  button:hover { background: var(--border); color: var(--text); }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.primary:hover { background: var(--accent-h); }
+
+  .main { display: flex; flex: 1; overflow: hidden; }
+
+  .editor-pane {
+    width: 340px;
+    min-width: 220px;
+    flex-shrink: 0;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .pane-hdr {
+    padding: 7px 13px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.8px;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    text-transform: uppercase;
+  }
+
+  textarea {
+    flex: 1;
+    background: var(--surface);
+    border: none;
+    outline: none;
+    color: #c8d0e0;
+    font-family: 'Roboto Mono', monospace;
+    font-size: 11.5px;
+    line-height: 1.75;
+    padding: 13px;
+    resize: none;
+    tab-size: 2;
+  }
+
+  .error-bar {
+    padding: 7px 13px;
+    font-size: 11px;
+    color: var(--danger);
+    border-top: 1px solid var(--border);
+    background: #2a1a1a;
+    display: none;
+  }
+  .error-bar.visible { display: block; }
+
+  .help {
+    padding: 10px 13px 13px;
+    border-top: 1px solid var(--border);
+    font-size: 10.5px;
+    color: var(--muted);
+    line-height: 1.85;
+  }
+  .help b { color: var(--label); }
+  .help code {
+    color: #7fb8f8;
+    background: var(--code-bg);
+    padding: 0 4px;
+    border-radius: 2px;
+    font-family: 'Roboto Mono', monospace;
+    font-size: 10px;
+  }
+
+  .divider {
+    width: 4px;
+    background: var(--border);
+    cursor: col-resize;
+    flex-shrink: 0;
+    transition: background 0.15s;
+  }
+  .divider:hover { background: #444c60; }
+
+  .canvas-pane {
+    flex: 1;
+    overflow: auto;
+    padding: 20px;
+    background: var(--bg);
+  }
+
+  canvas {
+    display: block;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+  }
+
+  select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--label);
+    font-family: 'Inter', sans-serif;
+    font-size: 11.5px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  select:hover { border-color: #444c60; }
+
+  button.tool-active { background: var(--accent) !important; color: #fff !important; border-color: var(--accent) !important; }
+
+  .canvas-wrap { position: relative; display: inline-block; line-height: 0; }
+  #cursorCanvas { position: absolute; top: 0; left: 0; pointer-events: none; display: block; border-radius: 5px; }
+
+  .modal-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 200;
+  }
+  .modal {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; min-width: 300px;
+    display: flex; flex-direction: column;
+  }
+  .modal-hdr { padding: 12px 16px; font-size: 13px; font-weight: 600; border-bottom: 1px solid var(--border); }
+  .modal-body { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .modal-body label { display: flex; flex-direction: column; gap: 5px; font-size: 11px; color: var(--label); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
+  .modal-body input, .modal-body select {
+    font-size: 12px; padding: 6px 9px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text); border-radius: 4px; font-family: 'Inter', sans-serif;
+    text-transform: none; letter-spacing: 0;
+  }
+  .modal-body input:focus, .modal-body select:focus { outline: none; border-color: var(--accent); }
+  .modal-foot { padding: 12px 16px; display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--border); }
+
+  .ctx-menu {
+    position: fixed; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 5px; min-width: 150px; z-index: 300;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.45); overflow: hidden;
+  }
+  .ctx-item { padding: 7px 14px; font-size: 11.5px; cursor: pointer; color: var(--label); }
+  .ctx-item:hover { background: var(--border); color: var(--text); }
+  .ctx-item.danger:hover { background: #3a1818; color: var(--danger); }
+
+  #cellEditor {
+    position: fixed; z-index: 400;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 5px; padding: 6px; gap: 4px; flex-wrap: wrap;
+    width: 216px; box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  }
+  #cellEditor .cell-hdr {
+    width: 100%; font-size: 9.5px; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.6px; padding: 0 2px 4px;
+    border-bottom: 1px solid var(--border); margin-bottom: 2px;
+  }
+  #cellEditor .cell-btn {
+    flex: 1 1 calc(25% - 4px); min-width: 44px;
+    padding: 4px 6px; font-size: 11px; text-align: center;
+  }
+  #busPanel {
+    width: 100%; flex-direction: column; gap: 6px;
+    margin-top: 5px; padding-top: 7px;
+    border-top: 1px solid var(--border);
+  }
+  .bus-field {
+    display: flex; flex-direction: column; gap: 3px;
+    font-size: 9.5px; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .bus-field input, .bus-field select {
+    font-size: 11px; padding: 4px 7px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text); border-radius: 3px;
+    font-family: 'Inter', sans-serif; text-transform: none; letter-spacing: 0;
+  }
+  .bus-field input:focus, .bus-field select:focus {
+    outline: none; border-color: var(--accent);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Wave<span>Edit</span></h1>
+  <div class="sep"></div>
+  <span class="sub">Timing Diagram Editor</span>
+  <div class="toolbar">
+    <button id="btnPointer" class="tool-active" title="Pointer — click cells to edit  [1]">↖ Pointer</button>
+    <button id="btnSelect" title="Select — drag to reorder signals or shift phase  [2]">⇄ Select</button>
+    <button id="btnMeasure" title="Measure time at cursor  [3]">⏱ Measure</button>
+    <button id="btnConstrain" title="Drag between signal edges to add a timing constraint  [4]">⊢ Constrain</button>
+    <div class="sep"></div>
+    <button id="btnAddSignal">+ Signal</button>
+    <button id="btnConfig">⚙ Config</button>
+    <div class="sep"></div>
+    <button id="btnZoomOut" title="Zoom out  [−]">− Zoom</button>
+    <button id="btnZoomIn"  title="Zoom in  [+]">+ Zoom</button>
+    <div class="sep"></div>
+    <button id="btnToggleJSON" title="Show/hide JSON editor">{ }</button>
+    <button id="btnExport">⬇ Export</button>
+    <div class="sep"></div>
+    <button id="btnRender" class="primary">▶ Render</button>
+  </div>
+</header>
+
+<div class="main">
+  <div class="editor-pane" id="editorPane" style="display:none">
+    <div class="pane-hdr">Signal Description (JSON)</div>
+    <textarea id="source" spellcheck="false"></textarea>
+    <div class="error-bar" id="errorBar"></div>
+    <div class="help">
+      <b>Wave chars:</b><br>
+      <code>0</code> low &nbsp;<code>1</code> high &nbsp;<code>h/l</code> same<br>
+      <code>z</code> hi-Z &nbsp;<code>x</code> unknown &nbsp;<code>.</code> continue<br>
+      <code>p/P</code> rising-edge clock &nbsp;<code>n/N</code> falling-edge clock<br>
+      capitals add an edge marker arrow &nbsp;<code>.</code> repeats<br>
+      <code>=</code> bus+label &nbsp;<code>2</code>–<code>9</code> colored bus+label &nbsp;<code>d</code> continue<br>
+      labels consumed in order from <code>"data":[]</code><br><br>
+      <b>Timing arrows:</b><br>
+      <code>"edge": ["A→B label"]</code><br>
+      <code>"node": {"A":{"signal":"CLK","cycle":2}}</code><br><br>
+      <b>Per-signal:</b> <code>"period"</code> cell width multiplier &nbsp;<code>"phase"</code> x offset<br>
+      <b>Global:</b> <code>"hscale"</code><br><br>
+      <b>Timing:</b><br>
+      <code>"timing": {"unit":"ns","period":10,"trise":1}</code><br>
+      units: <code>fs ps ns us ms s</code><br>
+      <code>"trise"</code> sets bus/X transition width in same units — scales chamfer with zoom, makes measure tool snap to stable-data edges
+    </div>
+  </div>
+
+  <div class="divider" id="divider" style="display:none"></div>
+
+  <div class="canvas-pane">
+    <div class="canvas-wrap">
+      <canvas id="waveCanvas"></canvas>
+      <canvas id="cursorCanvas"></canvas>
+    </div>
+  </div>
+</div>
+
+<div id="addSignalModal" class="modal-backdrop" style="display:none">
+  <div class="modal">
+    <div class="modal-hdr">Add Signal</div>
+    <div class="modal-body">
+      <label>Name
+        <input id="asmName" type="text" placeholder="e.g. CLK, DATA_BUS, CS_N">
+      </label>
+      <label>Type
+        <select id="asmType">
+          <option value="clock_p">Clock — rising edge (p)</option>
+          <option value="clock_n">Clock — falling edge (n)</option>
+          <option value="digital" selected>Digital (std_logic)</option>
+        </select>
+      </label>
+    </div>
+    <div class="modal-foot">
+      <button id="asmCancel">Cancel</button>
+      <button id="asmAdd" class="primary">Add Signal</button>
+    </div>
+  </div>
+</div>
+
+<div id="constraintModal" class="modal-backdrop" style="display:none">
+  <div class="modal" style="min-width:340px">
+    <div class="modal-hdr" id="ctModalHdr">Add Timing Constraint</div>
+    <div class="modal-body">
+      <label>Preset
+        <select id="ctPreset">
+          <option value="">Custom</option>
+          <option value="tSU">Setup time (tSU)</option>
+          <option value="tH">Hold time (tH)</option>
+          <option value="tpd">Prop. delay (tpd)</option>
+          <option value="tco">Clock-to-output (tco)</option>
+          <option value="tsk">Clock skew (tsk)</option>
+          <option value="tPHL">Fall delay (tPHL)</option>
+          <option value="tPLH">Rise delay (tPLH)</option>
+        </select>
+      </label>
+      <label>Label
+        <input id="ctLabel" type="text" placeholder="e.g.  tSU ≥ 2ns">
+      </label>
+    </div>
+    <div class="modal-foot">
+      <button id="ctCancel">Cancel</button>
+      <button id="ctAdd" class="primary" data-label-add="Add Constraint" data-label-edit="Save Changes">Add Constraint</button>
+    </div>
+  </div>
+</div>
+
+<div id="ctxMenu" class="ctx-menu" style="display:none">
+  <div id="ctxSignalProps"       class="ctx-item"        style="display:none">Signal Properties…</div>
+  <div id="ctxDelete"            class="ctx-item danger">Delete Signal</div>
+  <div id="ctxEditConstraint"    class="ctx-item"        style="display:none">Edit Constraint…</div>
+  <div id="ctxDeleteConstraint"  class="ctx-item danger" style="display:none">Delete Constraint</div>
+</div>
+
+<div id="cellEditor" style="display:none">
+  <div class="cell-hdr">Set cell state</div>
+  <button class="cell-btn" data-state="0">0 Low</button>
+  <button class="cell-btn" data-state="1">1 High</button>
+  <button class="cell-btn" data-state="x">x unk</button>
+  <button class="cell-btn" data-state="z">z Hi-Z</button>
+  <button class="cell-btn" data-state="p">p CLK↑</button>
+  <button class="cell-btn" data-state="n">n CLK↓</button>
+  <button class="cell-btn" data-state="=">=  Bus ▾</button>
+  <button class="cell-btn" data-state=".">. cont</button>
+  <div id="busPanel" style="display:none">
+    <label class="bus-field">Label
+      <input id="busLabel" type="text" placeholder="e.g. DATA, ADDR">
+    </label>
+    <label class="bus-field">Color
+      <select id="busColor">
+        <option value="=">Default</option>
+        <option value="2">Red</option>
+        <option value="3">Yellow</option>
+        <option value="4">Green</option>
+        <option value="5">Teal</option>
+        <option value="6">Blue</option>
+        <option value="7">Purple</option>
+        <option value="8">Gray</option>
+        <option value="9">Orange</option>
+      </select>
+    </label>
+    <button id="busApply" class="primary" style="width:100%; margin-top:2px">Apply Bus</button>
+  </div>
+</div>
+
+<!-- ── Config modal ──────────────────────────────────────────────── -->
+<div id="configModal" class="modal-backdrop" style="display:none">
+  <div class="modal" style="min-width:320px">
+    <div class="modal-hdr">Diagram Config</div>
+    <div class="modal-body">
+      <label>Time unit
+        <select id="cfgUnit">
+          <option value="fs">fs</option>
+          <option value="ps">ps</option>
+          <option value="ns" selected>ns</option>
+          <option value="us">µs</option>
+          <option value="ms">ms</option>
+          <option value="s">s</option>
+        </select>
+      </label>
+      <label>Clock period <span style="font-size:10px;color:var(--muted)">(in chosen unit)</span>
+        <input id="cfgPeriod" type="number" min="0" step="any" placeholder="e.g. 10">
+      </label>
+      <label>Rise / fall time <span style="font-size:10px;color:var(--muted)">(trise, same unit — scales bus chamfer)</span>
+        <input id="cfgTrise" type="number" min="0" step="any" placeholder="e.g. 1">
+      </label>
+      <label>hscale <span style="font-size:10px;color:var(--muted)">(horizontal cell width multiplier)</span>
+        <input id="cfgHscale" type="number" min="0.25" max="10" step="0.25" placeholder="1">
+      </label>
+    </div>
+    <div class="modal-foot">
+      <button id="cfgCancel">Cancel</button>
+      <button id="cfgApply" class="primary">Apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Signal properties modal ───────────────────────────────────── -->
+<div id="sigPropsModal" class="modal-backdrop" style="display:none">
+  <div class="modal" style="min-width:300px">
+    <div class="modal-hdr">Signal Properties</div>
+    <div class="modal-body">
+      <label>Name
+        <input id="spName" type="text">
+      </label>
+      <label>Period multiplier <span style="font-size:10px;color:var(--muted)">(cell width × this value)</span>
+        <input id="spPeriod" type="number" min="0.25" step="0.25" placeholder="1">
+      </label>
+      <label>Phase offset <span style="font-size:10px;color:var(--muted)">(cells, can be fractional)</span>
+        <input id="spPhase" type="number" step="0.05" placeholder="0">
+      </label>
+    </div>
+    <div class="modal-foot">
+      <button id="spCancel">Cancel</button>
+      <button id="spApply" class="primary">Apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Export modal ───────────────────────────────────────────────── -->
+<div id="exportModal" class="modal-backdrop" style="display:none">
+  <div class="modal" style="min-width:280px">
+    <div class="modal-hdr">Export Diagram</div>
+    <div class="modal-body">
+      <label>Theme
+        <select id="exportTheme">
+          <option value="light" selected>Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </label>
+      <label>PNG scale
+        <select id="pngScale">
+          <option value="1">1×</option>
+          <option value="2" selected>2×</option>
+          <option value="3">3×</option>
+          <option value="4">4×</option>
+        </select>
+      </label>
+    </div>
+    <div class="modal-foot">
+      <button id="expCancel">Cancel</button>
+      <button id="expSVG">Save SVG</button>
+      <button id="expPNG" class="primary">Save PNG</button>
+    </div>
+  </div>
+</div>
+
+<script>
+
+// ───── js/constants.js ─────
+const LABEL_W = 112, SIG_H = 38, HEAD_H = 34, FOOT_H = 8, PAD_R = 28, DELAY_GAP = 30;
+const HANDLE_W = 14;
+
+const THEMES = {
+  dark: {
+    bg:    '#1e2330', grid: '#272d3d', gridL: '#2e3548',
+    label: '#8a94aa', title: '#dce2f0',
+    clk:   '#4d9ef7', high:  '#4d9ef7', low: '#4d9ef7',
+    data:  '#4d9ef7', bus:   '#4d9ef7',
+    x: '#e06060', z: '#4d9ef7', edge: '#d4a030',
+    busColors: ['#c85050','#b89020','#40a050','#30a0a0','#5060d0','#a030a0','#909098','#c07030'],
+    waveW: 1.5,
+  },
+  light: {
+    bg:    '#ffffff', grid: '#e8edf5', gridL: '#d0d8e8',
+    label: '#374151', title: '#0f172a',
+    clk: '#1d4ed8', high: '#1d4ed8', low: '#1d4ed8',
+    data: '#1d4ed8', bus: '#1d4ed8',
+    x: '#b91c1c', z: '#1d4ed8', edge: '#92400e',
+    busColors: ['#b03040','#907020','#1a7030','#0a7878','#1040b0','#6020a0','#485060','#904018'],
+    waveW: 1.5,
+  }
+};
+
+// ───── js/model.js ─────
+function parseSpec(src) {
+  return JSON.parse(src.replace(/,(\s*[}\]])/g, '$1'));
+}
+
+function resolveWave(wave) {
+  const out = [];
+  let last = '0';
+  for (const ch of wave) {
+    if (ch === ' ') continue;
+    if (ch === '.') {
+      if (last === '=' || /^[2-9]$/.test(last)) out.push('d');
+      else out.push(last);
+    } else {
+      out.push(ch);
+      last = ch;
+    }
+  }
+  return out;
+}
+
+function levelY(state, hi, lo, mid) {
+  if (!state) return null;
+  if ('1hHpP'.includes(state)) return hi;
+  if ('0lLnN'.includes(state)) return lo;
+  if ('zZ'.includes(state))    return mid;
+  if (state === 'd' || state === '=' || /^[2-9]$/.test(state)) return mid;
+  return null;
+}
+
+function assignBracketRows(intervals) {
+  const GAP = 4;
+  const order = intervals.map((iv, i) => i).sort((a, b) => intervals[a].x1 - intervals[b].x1);
+  const rowEnds = [], result = new Array(intervals.length);
+  order.forEach(i => {
+    const { x1, x2 } = intervals[i];
+    let row = rowEnds.findIndex(end => x1 >= end + GAP);
+    if (row === -1) { row = rowEnds.length; rowEnds.push(x2); }
+    else rowEnds[row] = Math.max(rowEnds[row], x2);
+    result[i] = row;
+  });
+  return result;
+}
+
+function slopeForCW(slopeFrac, CW) {
+  return slopeFrac != null
+    ? Math.round(Math.min(0.45, slopeFrac) * CW)
+    : Math.min(13, Math.floor(CW * 0.35));
+}
+
+function nodeXApprox(nd, signals, CELL_W, slopeFrac = null) {
+  const sig = signals.find(s => s?.name === nd.signal);
+  if (!sig) return LABEL_W;
+  const phase = sig.phase || 0, period = sig.period || 1;
+  const x0 = LABEL_W + (phase + nd.cycle * period) * CELL_W;
+  const CW = period * CELL_W;
+  const bs = slopeForCW(slopeFrac, CW);
+  if (nd.anchor === 's') return x0 + bs;
+  if (nd.anchor === 'e') return x0 + CW - bs;
+  return x0;
+}
+
+function geometry(spec, hscale) {
+  const signals = spec.signal || [];
+  let maxCells = 0;
+  signals.forEach(s => {
+    if (s?.name && s.wave) {
+      const p = s.period || 1;
+      maxCells = Math.max(maxCells, s.wave.replace(/ /g, '').length * p);
+    }
+  });
+  const CELL_W = Math.round(40 * hscale);
+  const maxLen = Math.ceil(maxCells);
+  const slopeFrac = (spec.timing?.trise > 0 && spec.timing?.period > 0)
+    ? Math.min(0.45, spec.timing.trise / spec.timing.period)
+    : null;
+
+  const gapSpans = new Map();
+  if (Array.isArray(spec.edge) && spec.node) {
+    spec.edge.forEach(str => {
+      const m = str.match(/^([A-Za-z0-9]+)\s*[→>~-]+\s*([A-Za-z0-9]+)/);
+      if (!m) return;
+      const n1 = spec.node[m[1]], n2 = spec.node[m[2]];
+      if (!n1 || !n2 || n1.signal === n2.signal) return;
+      const i1 = signals.findIndex(s => s?.name === n1.signal);
+      const i2 = signals.findIndex(s => s?.name === n2.signal);
+      if (i1 < 0 || i2 < 0) return;
+      const gapIdx = Math.max(i1, i2) - 1;
+      const xa = nodeXApprox(n1, signals, CELL_W, slopeFrac), xb = nodeXApprox(n2, signals, CELL_W, slopeFrac);
+      if (!gapSpans.has(gapIdx)) gapSpans.set(gapIdx, []);
+      gapSpans.get(gapIdx).push({ x1: Math.min(xa, xb), x2: Math.max(xa, xb) });
+    });
+  }
+  const gapCounts = new Map();
+  gapSpans.forEach((spans, gapIdx) => {
+    const rows = assignBracketRows(spans);
+    gapCounts.set(gapIdx, rows.length > 0 ? Math.max(...rows) + 1 : 1);
+  });
+  const gapAfter = new Set(gapCounts.keys());
+
+  const sameHi = new Set();
+  const sameLo = new Set();
+  if (Array.isArray(spec.edge) && spec.node) {
+    spec.edge.forEach(str => {
+      const m = str.match(/^([A-Za-z0-9]+)\s*[→>~-]+\s*([A-Za-z0-9]+)/);
+      if (!m) return;
+      const n1 = spec.node[m[1]], n2 = spec.node[m[2]];
+      if (!n1 || !n2 || n1.signal !== n2.signal) return;
+      const si = signals.findIndex(s => s?.name === n1.signal);
+      if (si < 0) return;
+      const sig = signals[si];
+      if (!sig?.wave) return;
+      const res = resolveWave(sig.wave);
+      const lv = ch => '1hHpP'.includes(ch) ? 'hi' : '0lLnN'.includes(ch) ? 'lo' : 'mid';
+      const l1 = lv(res[Math.floor(n1.cycle)] || '0');
+      const l2 = lv(res[Math.floor(n2.cycle)] || '0');
+      if (l1 === 'lo' && l2 === 'lo') sameLo.add(si);
+      else sameHi.add(si);
+    });
+  }
+
+  // Count stacked rows needed per signal for same-direction brackets
+  const sameHiRows = new Map(); // sigIdx → row count
+  const sameLoRows = new Map();
+  if (Array.isArray(spec.edge) && spec.node) {
+    const hiSpans = new Map(), loSpans = new Map();
+    spec.edge.forEach(str => {
+      const m = str.match(/^([A-Za-z0-9]+)\s*[→>~-]+\s*([A-Za-z0-9]+)/);
+      if (!m) return;
+      const n1 = spec.node[m[1]], n2 = spec.node[m[2]];
+      if (!n1 || !n2 || n1.signal !== n2.signal) return;
+      const si = signals.findIndex(s => s?.name === n1.signal);
+      if (si < 0) return;
+      const xa = nodeXApprox(n1, signals, CELL_W, slopeFrac), xb = nodeXApprox(n2, signals, CELL_W, slopeFrac);
+      const target = sameHi.has(si) ? hiSpans : loSpans;
+      if (!target.has(si)) target.set(si, []);
+      target.get(si).push({ x1: Math.min(xa, xb), x2: Math.max(xa, xb) });
+    });
+    hiSpans.forEach((spans, si) => {
+      const rows = assignBracketRows(spans);
+      sameHiRows.set(si, rows.length > 0 ? Math.max(...rows) + 1 : 1);
+    });
+    loSpans.forEach((spans, si) => {
+      const rows = assignBracketRows(spans);
+      sameLoRows.set(si, rows.length > 0 ? Math.max(...rows) + 1 : 1);
+    });
+  }
+
+  const signalTopY = [];
+  let y = HEAD_H;
+  for (let i = 0; i < signals.length; i++) {
+    const nHi = sameHiRows.get(i) || (sameHi.has(i) ? 1 : 0);
+    if (nHi > 0) y += nHi * DELAY_GAP;
+    signalTopY.push(y);
+    const n = gapCounts.get(i) || 0;
+    const nLo = sameLoRows.get(i) || (sameLo.has(i) ? 1 : 0);
+    y += SIG_H + (n > 0 ? n * DELAY_GAP : 0) + (nLo > 0 ? nLo * DELAY_GAP : 0);
+  }
+
+  const W = Math.max(LABEL_W + maxLen * CELL_W + PAD_R, 300);
+  const H = Math.max(y + FOOT_H, 120);
+  return { signals, maxLen, CELL_W, W, H, signalTopY, gapAfter, gapCounts, sameHi, sameLo, sameHiRows, sameLoRows, slopeFrac };
+}
+
+function formatTimeLabel(cycle, period) {
+  return String(parseFloat((cycle * period).toPrecision(10)));
+}
+
+function formatSpec(spec) {
+  function fmt(val, depth) {
+    const ind = '  '.repeat(depth), ind1 = '  '.repeat(depth + 1);
+    if (Array.isArray(val)) {
+      if (!val.length) return '[]';
+      const items = val.map(v => fmt(v, depth + 1));
+      const flat = '[' + items.join(', ') + ']';
+      if (!items.some(s => s.includes('\n')) && flat.length <= 76) return flat;
+      return '[\n' + items.map(s => ind1 + s).join(',\n') + '\n' + ind + ']';
+    }
+    if (val !== null && typeof val === 'object') {
+      const entries = Object.entries(val);
+      if (!entries.length) return '{}';
+      return '{\n' + entries.map(([k,v]) => ind1 + JSON.stringify(k) + ': ' + fmt(v, depth+1)).join(',\n') + '\n' + ind + '}';
+    }
+    return JSON.stringify(val);
+  }
+  return fmt(spec, 0);
+}
+
+// ───── js/renderer.js ─────
+function drawAll(ctx, T, spec, signals, maxLen, CELL_W, W, H, signalTopY, gapAfter, gapCounts, sameHi, sameLo, slopeFrac = null) {
+  const MONO = '"Roboto Mono", monospace';
+  if (!signalTopY) { signalTopY = signals.map((_, i) => HEAD_H + i * SIG_H); gapAfter = new Set(); gapCounts = new Map(); sameHi = new Set(); sameLo = new Set(); }
+
+  if (spec.title) {
+    ctx.font = `600 12px "Inter", sans-serif`;
+    ctx.fillStyle = T.title; ctx.textAlign = 'left';
+    ctx.fillText(spec.title, LABEL_W, 20);
+  }
+
+  const timing = spec.timing;
+  const hasTiming = !!(timing?.period > 0);
+
+  for (let i = 0; i <= maxLen; i++) {
+    const x = LABEL_W + i * CELL_W;
+    ctx.strokeStyle = (i % 2 === 0) ? T.gridL : T.grid;
+    ctx.lineWidth = 1; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(x, HEAD_H); ctx.lineTo(x, H - FOOT_H); ctx.stroke();
+    ctx.font = `10px ${MONO}`; ctx.fillStyle = T.label; ctx.textAlign = 'center';
+    if (hasTiming) {
+      if (i > 0) ctx.fillText(formatTimeLabel(i, timing.period), x, HEAD_H - 7);
+    } else {
+      if (i < maxLen) ctx.fillText(String(i), x + CELL_W / 2, HEAD_H - 7);
+    }
+  }
+  ctx.textAlign = 'left';
+  ctx.font = `10px ${MONO}`; ctx.fillStyle = T.label;
+  ctx.fillText(hasTiming ? (timing.unit || 'time') : 'Cycle', 4, HEAD_H - 7);
+
+  ctx.strokeStyle = T.gridL; ctx.lineWidth = 1; ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(0, HEAD_H); ctx.lineTo(W, HEAD_H); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(LABEL_W, 0); ctx.lineTo(LABEL_W, H); ctx.stroke();
+
+  signals.forEach((_, ri) => {
+    const y = signalTopY[ri] + SIG_H;
+    ctx.strokeStyle = T.grid; ctx.lineWidth = 0.5; ctx.setLineDash([2, 4]);
+    ctx.beginPath(); ctx.moveTo(LABEL_W, y); ctx.lineTo(W, y); ctx.stroke();
+  });
+  ctx.setLineDash([]);
+
+  const sigRowY = {};
+  signals.forEach((sig, ri) => {
+    const topY = signalTopY[ri];
+    if (!sig?.name) {
+      ctx.strokeStyle = T.grid; ctx.lineWidth = 0.5; ctx.setLineDash([3, 5]);
+      ctx.beginPath(); ctx.moveTo(LABEL_W + 4, topY + SIG_H/2); ctx.lineTo(W - 4, topY + SIG_H/2); ctx.stroke();
+      ctx.setLineDash([]); return;
+    }
+    sigRowY[sig.name] = topY;
+    ctx.font = `500 11px ${MONO}`; ctx.fillStyle = T.label; ctx.textAlign = 'right';
+    ctx.fillText(sig.name, LABEL_W - 8, topY + SIG_H/2 + 4);
+    ctx.textAlign = 'left';
+    if (sig.wave) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(LABEL_W, HEAD_H, W - LABEL_W, H - HEAD_H);
+      ctx.clip();
+      drawWaveCanvas(ctx, sig, topY, CELL_W, T, slopeFrac);
+      ctx.restore();
+    }
+  });
+
+  const nodeRail = {};
+  if (Array.isArray(spec.edge) && spec.node) {
+    spec.edge.forEach(str => {
+      const m = str.match(/^([A-Za-z0-9]+)\s*[→>~-]+\s*([A-Za-z0-9]+)/);
+      if (!m) return;
+      const na = spec.node[m[1]], nb = spec.node[m[2]];
+      if (!na || !nb || na.signal === nb.signal) return;
+      const ia = signals.findIndex(s => s?.name === na.signal);
+      const ib = signals.findIndex(s => s?.name === nb.signal);
+      if (ia < 0 || ib < 0) return;
+      nodeRail[m[1]] = ib > ia ? 'lo' : 'hi';
+      nodeRail[m[2]] = ia > ib ? 'lo' : 'hi';
+    });
+  }
+
+  const nodeXY = {};
+  if (spec.node) {
+    Object.entries(spec.node).forEach(([key, nd]) => {
+      const ty = sigRowY[nd.signal]; if (ty === undefined) return;
+      const hi = ty + 6, lo = ty + SIG_H - 6, mid2 = ty + SIG_H / 2;
+      const sigObj = signals.find(s => s?.name === nd.signal);
+      const period2 = sigObj?.period || 1, phase2 = sigObj?.phase || 0;
+      const CW2 = CELL_W * period2;
+      const x0 = LABEL_W + (phase2 + nd.cycle * period2) * CELL_W;
+      const busSlope = slopeForCW(slopeFrac, CW2);
+      let nx = x0, ny = mid2;
+      if (sigObj?.wave) {
+        const res = resolveWave(sigObj.wave);
+        const ch = res[Math.floor(nd.cycle)] || '0';
+        const isBus = ch==='d'||ch==='D'||ch==='='||/^[2-9]$/.test(ch);
+        if (isBus && (nd.anchor === 'e' || nd.anchor === 's')) {
+          nx = nd.anchor === 'e' ? x0 + CW2 - busSlope : x0 + busSlope;
+          ny = nodeRail[key] === 'lo' ? lo : hi;
+        } else if (isBus) {
+          const ci = Math.floor(nd.cycle);
+          const prevCh = ci > 0 ? res[ci - 1] : null;
+          const prevIsBus = prevCh && (prevCh==='d'||prevCh==='D'||prevCh==='='||/^[2-9]$/.test(prevCh));
+          if (!prevIsBus && prevCh !== null) {
+            ny = levelY(prevCh, hi, lo, mid2) ?? mid2;
+          } else {
+            ny = mid2;
+          }
+        } else {
+          const fy = levelY(ch, hi, lo, mid2);
+          if (fy !== null && fy !== mid2 && nodeRail[key]) {
+            ny = nodeRail[key] === 'lo' ? lo : hi;
+          } else {
+            ny = fy !== null ? fy : mid2;
+          }
+        }
+      }
+      nodeXY[key] = { x: nx, y: ny, signal: nd.signal };
+      ctx.fillStyle = T.edge;
+      ctx.beginPath(); ctx.arc(nx, ny, 3, 0, Math.PI * 2); ctx.fill();
+    });
+  }
+
+  if (Array.isArray(spec.edge)) {
+    const gapGroups   = new Map(); // cross-signal
+    const sameSigHi   = new Map(); // sigIdx → [{p1,p2,label}] above signal
+    const sameSigLo   = new Map(); // sigIdx → [{p1,p2,label}] below signal
+
+    spec.edge.forEach(str => {
+      const m = str.match(/^([A-Za-z0-9]+)\s*[→>~-]+\s*([A-Za-z0-9]+)\s*(.*)?$/);
+      if (!m) return;
+      const p1 = nodeXY[m[1]], p2 = nodeXY[m[2]];
+      if (!p1 || !p2) return;
+      const label = m[3]?.trim();
+      const isCross = p1.signal && p2.signal && p1.signal !== p2.signal;
+      if (isCross) {
+        const i1 = signals.findIndex(s => s?.name === p1.signal);
+        const i2 = signals.findIndex(s => s?.name === p2.signal);
+        const gapIdx = Math.max(i1, i2) - 1;
+        if (!gapGroups.has(gapIdx)) gapGroups.set(gapIdx, []);
+        gapGroups.get(gapIdx).push({ p1, p2, label });
+      } else {
+        const si = signals.findIndex(s => s?.name === p1.signal);
+        if (sameHi?.has(si)) {
+          if (!sameSigHi.has(si)) sameSigHi.set(si, []);
+          sameSigHi.get(si).push({ p1, p2, label });
+        } else if (sameLo?.has(si)) {
+          if (!sameSigLo.has(si)) sameSigLo.set(si, []);
+          sameSigLo.get(si).push({ p1, p2, label });
+        } else {
+          drawArrowCanvas(ctx, p1.x, p1.y, p2.x, p2.y, label, T);
+        }
+      }
+    });
+
+    sameSigHi.forEach((brackets, si) => {
+      const ty = signalTopY[si];
+      const intervals = brackets.map(b => ({ x1: Math.min(b.p1.x, b.p2.x), x2: Math.max(b.p1.x, b.p2.x) }));
+      const rows = assignBracketRows(intervals);
+      brackets.forEach((b, j) => {
+        const midY = ty - DELAY_GAP * (rows[j] + 0.5);
+        drawDelayBracket(ctx, b.p1.x, b.p1.y, b.p2.x, b.p2.y, midY, b.label, T);
+      });
+    });
+
+    sameSigLo.forEach((brackets, si) => {
+      const ty = signalTopY[si];
+      const intervals = brackets.map(b => ({ x1: Math.min(b.p1.x, b.p2.x), x2: Math.max(b.p1.x, b.p2.x) }));
+      const rows = assignBracketRows(intervals);
+      brackets.forEach((b, j) => {
+        const midY = ty + SIG_H + DELAY_GAP * (rows[j] + 0.5);
+        drawDelayBracket(ctx, b.p1.x, b.p1.y, b.p2.x, b.p2.y, midY, b.label, T);
+      });
+    });
+
+    gapGroups.forEach((brackets, gapIdx) => {
+      const gapTop = signalTopY[gapIdx] + SIG_H;
+      const intervals = brackets.map(b => ({ x1: Math.min(b.p1.x, b.p2.x), x2: Math.max(b.p1.x, b.p2.x) }));
+      const rows = assignBracketRows(intervals);
+      brackets.forEach((b, j) => {
+        const midY = gapTop + DELAY_GAP * (rows[j] + 0.5);
+        drawDelayBracket(ctx, b.p1.x, b.p1.y, b.p2.x, b.p2.y, midY, b.label, T);
+      });
+    });
+  }
+}
+
+function drawDelayBracket(ctx, x1, y1, x2, y2, midY, label, T) {
+  const MONO = '"Roboto Mono", monospace';
+  ctx.strokeStyle = T.edge; ctx.fillStyle = T.edge; ctx.lineWidth = 1.2;
+
+  ctx.setLineDash([4, 3]);
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x1, midY); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x2, y2); ctx.lineTo(x2, midY); ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.beginPath(); ctx.moveTo(x1, midY); ctx.lineTo(x2, midY); ctx.stroke();
+
+  const tk = 5;
+  ctx.beginPath(); ctx.moveTo(x1, midY - tk); ctx.lineTo(x1, midY + tk); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x2, midY - tk); ctx.lineTo(x2, midY + tk); ctx.stroke();
+
+  if (!label) return;
+  ctx.font = `10px ${MONO}`;
+  const lw = ctx.measureText(label).width;
+  const barW = Math.abs(x2 - x1);
+  const aL = 6, dir = x2 > x1 ? 1 : -1;
+  ctx.textAlign = 'center';
+  if (lw + 8 <= barW) {
+    ctx.fillText(label, (x1 + x2) / 2, midY - 5);
+  } else {
+    ctx.beginPath(); ctx.moveTo(x1, midY);
+    ctx.lineTo(x1 - dir * aL, midY - 3); ctx.lineTo(x1 - dir * aL, midY + 3);
+    ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(x2, midY);
+    ctx.lineTo(x2 + dir * aL, midY - 3); ctx.lineTo(x2 + dir * aL, midY + 3);
+    ctx.closePath(); ctx.fill();
+    ctx.textAlign = 'right';
+    ctx.fillText(label, Math.min(x1, x2) - (aL + 4), midY + 4);
+  }
+  ctx.textAlign = 'left';
+}
+
+function drawWaveCanvas(ctx, sig, topY, CELL_W, T, slopeFrac = null) {
+  const hi  = topY + 6;
+  const lo  = topY + SIG_H - 6;
+  const mid = topY + SIG_H / 2;
+  const period = sig.period || 1;
+  const phase  = sig.phase  || 0;
+  const CW     = CELL_W * period;
+  const resolved = resolveWave(sig.wave);
+  const data = sig.data ? [...sig.data] : [];
+  const di   = { i: 0 };
+  const MONO = '"Roboto Mono", monospace';
+
+  let curColor = null;
+  let curDash  = null;
+  let penX = null;
+  let penY = null;
+
+  const beginSeg = (color, dash = null) => {
+    const dKey = dash ? dash.join() : '';
+    const cKey = curDash ? curDash.join() : '';
+    if (color !== curColor || dKey !== cKey) {
+      if (curColor !== null) { ctx.stroke(); ctx.setLineDash([]); }
+      curColor = color; curDash = dash;
+      ctx.strokeStyle = color; ctx.lineWidth = T.waveW;
+      ctx.setLineDash(dash || []);
+      ctx.beginPath();
+      if (penX !== null) ctx.moveTo(penX, penY);
+    }
+  };
+
+  const pen = (x, y, color, dash = null) => {
+    beginSeg(color, dash);
+    if (penX === null) { ctx.moveTo(x, y); } else { ctx.lineTo(x, y); }
+    penX = x; penY = y;
+  };
+
+  const flush = () => {
+    if (curColor !== null) { ctx.stroke(); ctx.setLineDash([]); }
+    curColor = null; curDash = null;
+  };
+
+  const breakPath = () => { flush(); penX = null; penY = null; };
+
+  let prev = null;
+  let curBusColor = T.bus;
+
+  if (phase > 0 && resolved.length > 0) {
+    const firstCh = resolved[0];
+    const fillX1 = LABEL_W + phase * CELL_W;
+    let fillY = null, fillColor = null, fillDash = null;
+    if      (firstCh === '0' || firstCh === 'l' || firstCh === 'L') { fillY = lo;  fillColor = T.low; }
+    else if (firstCh === '1' || firstCh === 'h' || firstCh === 'H') { fillY = hi;  fillColor = T.high; }
+    else if (firstCh === 'p' || firstCh === 'P')                    { fillY = lo;  fillColor = T.clk; }
+    else if (firstCh === 'n' || firstCh === 'N')                    { fillY = hi;  fillColor = T.clk; }
+    else if (firstCh === 'z' || firstCh === 'Z')                    { fillY = mid; fillColor = T.z; fillDash = [4, 3]; }
+    if (fillY !== null) {
+      ctx.strokeStyle = fillColor; ctx.lineWidth = T.waveW;
+      ctx.setLineDash(fillDash || []);
+      ctx.beginPath(); ctx.moveTo(LABEL_W, fillY); ctx.lineTo(fillX1, fillY); ctx.stroke();
+      ctx.setLineDash([]);
+      penX = fillX1; penY = fillY;
+    }
+  }
+
+  for (let i = 0; i < resolved.length; i++) {
+    const ch = resolved[i];
+    const x0 = LABEL_W + (phase + i * period) * CELL_W;
+    const x1 = x0 + CW;
+
+    if (ch === '1' || ch === 'h' || ch === 'H') {
+      const fy = penY !== null ? penY : levelY(prev, hi, lo, mid);
+      if (fy !== null && fy !== hi) pen(x0, fy, T.high);
+      pen(x0, hi, T.high); pen(x1, hi, T.high);
+      prev = '1';
+
+    } else if (ch === '0' || ch === 'l' || ch === 'L') {
+      const fy = penY !== null ? penY : levelY(prev, hi, lo, mid);
+      if (fy !== null && fy !== lo) pen(x0, fy, T.low);
+      pen(x0, lo, T.low); pen(x1, lo, T.low);
+      prev = '0';
+
+    } else if (ch === 'z' || ch === 'Z') {
+      const fy = penY !== null ? penY : levelY(prev, hi, lo, mid);
+      if (fy !== null && fy !== mid) { pen(x0, fy, T.z); pen(x0, mid, T.z); }
+      flush();
+      ctx.strokeStyle = T.z; ctx.lineWidth = T.waveW; ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(x0, mid); ctx.lineTo(x1, mid); ctx.stroke();
+      ctx.setLineDash([]);
+      curColor = null; penX = x1; penY = mid;
+      prev = 'z';
+
+    } else if (ch === 'x' || ch === 'X') {
+      breakPath();
+
+      let xEnd = i;
+      while (xEnd + 1 < resolved.length && (resolved[xEnd + 1] === 'x' || resolved[xEnd + 1] === 'X')) xEnd++;
+
+      const slope = slopeForCW(slopeFrac, CW);
+      const prevState = prev;
+      const nextState = xEnd + 1 < resolved.length ? resolved[xEnd + 1] : null;
+      const runX0 = (i === 0 && phase > 0) ? LABEL_W : LABEL_W + (phase + i * period) * CELL_W;
+      const runX1 = LABEL_W + (phase + (xEnd + 1) * period) * CELL_W;
+      const entryFromLogic = prevState && '01hHlLpn'.includes(prevState);
+      const exitToLogic    = nextState && '01hHlLpn'.includes(nextState);
+
+      const topPts = [], botPts = [];
+      if (entryFromLogic) {
+        const fy = levelY(prevState, hi, lo, mid);
+        topPts.push([runX0, fy], [runX0 + slope, hi]);
+        botPts.push([runX0, fy], [runX0 + slope, lo]);
+      } else {
+        topPts.push([runX0, mid], [runX0 + slope, hi]);
+        botPts.push([runX0, mid], [runX0 + slope, lo]);
+      }
+      if (exitToLogic) {
+        const ty = levelY(nextState, hi, lo, mid);
+        topPts.push([runX1 - slope, hi], [runX1, ty]);
+        botPts.push([runX1 - slope, lo], [runX1, ty]);
+      } else {
+        topPts.push([runX1 - slope, hi], [runX1, mid]);
+        botPts.push([runX1 - slope, lo], [runX1, mid]);
+      }
+
+      ctx.save();
+      ctx.beginPath();
+      topPts.forEach(([px, py], j) => j === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py));
+      [...botPts].reverse().forEach(([px, py]) => ctx.lineTo(px, py));
+      ctx.closePath();
+      ctx.fillStyle = T.x + '18';
+      ctx.fill();
+
+      ctx.save();
+      ctx.clip();
+      ctx.strokeStyle = T.x + 'aa'; ctx.lineWidth = 1; ctx.setLineDash([]);
+      const hatchGap = 8;
+      for (let d = -(lo - hi); d < (runX1 - runX0) + (lo - hi); d += hatchGap) {
+        ctx.beginPath();
+        ctx.moveTo(runX0 + d, hi);
+        ctx.lineTo(runX0 + d + (lo - hi), lo);
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      ctx.strokeStyle = T.x; ctx.lineWidth = T.waveW; ctx.setLineDash([]);
+      ctx.beginPath();
+      topPts.forEach(([px, py], j) => j === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py));
+      ctx.stroke();
+      ctx.beginPath();
+      botPts.forEach(([px, py], j) => j === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py));
+      ctx.stroke();
+      ctx.restore();
+
+      i = xEnd;
+      penX = runX1; penY = exitToLogic ? levelY(nextState, hi, lo, mid) : mid;
+      prev = 'x';
+
+    } else if (ch === 'p' || ch === 'P') {
+      const ex = x0 + CW / 2;
+      pen(x0, lo, T.clk); pen(ex, lo, T.clk); pen(ex, hi, T.clk); pen(x1, hi, T.clk);
+      if (ch === 'P') {
+        flush();
+        ctx.fillStyle = T.clk;
+        ctx.beginPath();
+        ctx.moveTo(ex, hi - 2); ctx.lineTo(ex - 3, hi + 7); ctx.lineTo(ex + 3, hi + 7);
+        ctx.closePath(); ctx.fill();
+        penX = x1; penY = hi;
+      }
+      prev = 'p';
+
+    } else if (ch === 'n' || ch === 'N') {
+      const ex = x0 + CW / 2;
+      pen(x0, hi, T.clk); pen(ex, hi, T.clk); pen(ex, lo, T.clk); pen(x1, lo, T.clk);
+      if (ch === 'N') {
+        flush();
+        ctx.fillStyle = T.clk;
+        ctx.beginPath();
+        ctx.moveTo(ex, lo + 2); ctx.lineTo(ex - 3, lo - 7); ctx.lineTo(ex + 3, lo - 7);
+        ctx.closePath(); ctx.fill();
+        penX = x1; penY = lo;
+      }
+      prev = 'n';
+
+    } else if (ch === 'd' || ch === 'D' || ch === '=' || /^[2-9]$/.test(ch)) {
+      breakPath();
+      const isLabel = ch === '=' || /^[2-9]$/.test(ch);
+      const lbl = isLabel ? (data[di.i++] || '') : null;
+      if (isLabel) curBusColor = /^[2-9]$/.test(ch) ? T.busColors[parseInt(ch) - 2] : T.bus;
+      const isBusStart = prev !== 'd' && prev !== 'D' && prev !== '=' && !/^[2-9]$/.test(prev || '');
+      const isLabelBoundary = isLabel && !isBusStart;
+      const nextCh = resolved[i + 1] || null;
+      const nextIsLabel = nextCh === null || (nextCh !== 'd' && nextCh !== 'D');
+      const slope = slopeForCW(slopeFrac, CW), color = curBusColor;
+      const entryY = isBusStart ? (levelY(prev, hi, lo, mid) ?? mid) : mid;
+      const exitY = nextIsLabel ? (levelY(nextCh, hi, lo, mid) ?? mid) : mid;
+      ctx.strokeStyle = color; ctx.lineWidth = T.waveW; ctx.setLineDash([]);
+      const railEnd = nextIsLabel ? x1 - slope : x1;
+
+      ctx.save();
+      ctx.beginPath(); ctx.rect(x0, topY, x1 - x0, SIG_H); ctx.clip();
+
+      ctx.fillStyle = color + '1a';
+      ctx.beginPath();
+      if (isBusStart || isLabelBoundary) { ctx.moveTo(x0, entryY); ctx.lineTo(x0 + slope, hi); }
+      else                               { ctx.moveTo(x0, hi); }
+      ctx.lineTo(railEnd, hi);
+      if (nextIsLabel) { ctx.lineTo(x1, exitY); ctx.lineTo(railEnd, lo); }
+      else             { ctx.lineTo(x1, lo); }
+      if (isBusStart || isLabelBoundary) { ctx.lineTo(x0 + slope, lo); ctx.lineTo(x0, entryY); }
+      else                               { ctx.lineTo(x0, lo); }
+      ctx.closePath(); ctx.fill();
+
+      ctx.beginPath();
+      if (isBusStart || isLabelBoundary) { ctx.moveTo(x0, entryY); ctx.lineTo(x0 + slope, hi); }
+      else                               { ctx.moveTo(x0, hi); }
+      ctx.lineTo(railEnd, hi);
+      if (nextIsLabel) ctx.lineTo(x1, exitY);
+      ctx.stroke();
+
+      ctx.beginPath();
+      if (isBusStart || isLabelBoundary) { ctx.moveTo(x0, entryY); ctx.lineTo(x0 + slope, lo); }
+      else                               { ctx.moveTo(x0, lo); }
+      ctx.lineTo(railEnd, lo);
+      if (nextIsLabel) ctx.lineTo(x1, exitY);
+      ctx.stroke();
+
+      ctx.restore();
+
+      if (lbl) {
+        const lx = (isBusStart || isLabelBoundary) ? x0 + slope : x0;
+        const rx = nextIsLabel ? railEnd : x1;
+        ctx.fillStyle = color;
+        ctx.font = `500 10px ${MONO}`; ctx.textAlign = 'center';
+        ctx.fillText(lbl, (lx + rx) / 2, mid + 4); ctx.textAlign = 'left';
+      }
+      penX = x1; penY = exitY;
+      prev = isLabel ? ch : 'd';
+    }
+  }
+
+  flush();
+}
+
+function drawArrowCanvas(ctx, x1, y1, x2, y2, label, T) {
+  const MONO = '"Roboto Mono", monospace';
+  ctx.strokeStyle = T.edge; ctx.fillStyle = T.edge;
+  ctx.lineWidth = 1.2; ctx.setLineDash([4, 3]);
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  ctx.setLineDash([]);
+  const aL = 8, aO = 0.38;
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - aL * Math.cos(angle - aO), y2 - aL * Math.sin(angle - aO));
+  ctx.lineTo(x2 - aL * Math.cos(angle + aO), y2 - aL * Math.sin(angle + aO));
+  ctx.closePath(); ctx.fill();
+  if (label) {
+    ctx.font = `10px ${MONO}`; ctx.fillStyle = T.edge; ctx.textAlign = 'center';
+    ctx.fillText(label, (x1 + x2) / 2, Math.min(y1, y2) - 7);
+    ctx.textAlign = 'left';
+  }
+}
+
+// ───── js/svg.js ─────
+function escXML(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+const _attr = o => Object.entries(o).map(([k,v])=>`${k}="${String(v).replace(/&/g,'&amp;').replace(/"/g,'&quot;')}"`).join(' ');
+const _tag  = (t, a, c) => c !== undefined ? `<${t} ${_attr(a)}>${c}</${t}>` : `<${t} ${_attr(a)}/>`;
+const _line = (x1,y1,x2,y2,color,w=1.5,dash='') => _tag('line',{
+  x1,y1,x2,y2,stroke:color,'stroke-width':w,'stroke-linecap':'square',
+  ...(dash ? {'stroke-dasharray':dash} : {})
+});
+const _rect = (x,y,w,h,fill) => _tag('rect',{x,y,width:w,height:h,fill});
+const _txt  = (x,y,s,fill,size=11,weight=400,anchor='start') =>
+  _tag('text',{x,y,fill,'font-family':'"Roboto Mono", monospace','font-size':size,'font-weight':weight,'text-anchor':anchor},escXML(String(s)));
+
+function drawDelayBracketSVG(els, x1, y1, x2, y2, midY, label, T) {
+  const tk = 5;
+  els.push(_line(x1,y1,x1,midY,T.edge,1.2,'4 3'));
+  els.push(_line(x2,y2,x2,midY,T.edge,1.2,'4 3'));
+  els.push(_line(x1,midY,x2,midY,T.edge,1.2));
+  els.push(_line(x1,midY-tk,x1,midY+tk,T.edge,1.2));
+  els.push(_line(x2,midY-tk,x2,midY+tk,T.edge,1.2));
+  if (!label) return;
+  const barW = Math.abs(x2 - x1);
+  const labelLen = label.length * 6.5;
+  const dir = x2 > x1 ? 1 : -1;
+  if (labelLen + 8 <= barW) {
+    els.push(_txt((x1+x2)/2, midY-5, label, T.edge, 10, 400, 'middle'));
+  } else {
+    const aL = 6;
+    els.push(_tag('polygon',{points:`${x1},${midY} ${x1-dir*aL},${midY-3} ${x1-dir*aL},${midY+3}`,fill:T.edge}));
+    els.push(_tag('polygon',{points:`${x2},${midY} ${x2+dir*aL},${midY-3} ${x2+dir*aL},${midY+3}`,fill:T.edge}));
+    els.push(_txt(Math.min(x1,x2)-(aL+4), midY+4, label, T.edge, 10, 400, 'end'));
+  }
+}
+
+function buildSVG(spec, signals, maxLen, CELL_W, W, H, T, signalTopY, gapAfter, gapCounts, sameHi, sameLo, slopeFrac) {
+  if (!signalTopY) { signalTopY = signals.map((_, i) => HEAD_H + i * SIG_H); gapAfter = new Set(); }
+  if (!gapCounts) gapCounts = new Map();
+  if (!sameHi) sameHi = new Set();
+  if (!sameLo) sameLo = new Set();
+  const els = [];
+
+  els.push(_rect(0,0,W,H,T.bg));
+  els.push(`<defs><clipPath id="waveArea"><rect x="${LABEL_W}" y="${HEAD_H}" width="${W-LABEL_W}" height="${H-HEAD_H}"/></clipPath></defs>`);
+
+  if (spec.title)
+    els.push(_tag('text',{x:LABEL_W,y:20,fill:T.title,'font-family':'"Inter",sans-serif','font-size':12,'font-weight':600},escXML(spec.title)));
+
+  const timing = spec.timing;
+  const hasTiming = !!(timing?.period > 0);
+
+  for (let i = 0; i <= maxLen; i++) {
+    const x = LABEL_W + i * CELL_W;
+    els.push(_line(x, HEAD_H, x, H - FOOT_H, i%2===0?T.gridL:T.grid, 1));
+    if (hasTiming) {
+      if (i > 0) els.push(_txt(x, HEAD_H-7, formatTimeLabel(i, timing.period), T.label, 10, 400, 'middle'));
+    } else {
+      if (i < maxLen) els.push(_txt(x + CELL_W/2, HEAD_H-7, String(i), T.label, 10, 400, 'middle'));
+    }
+  }
+  els.push(_txt(4, HEAD_H-7, hasTiming ? (timing.unit || 'time') : 'Cycle', T.label, 10));
+
+  els.push(_line(0,HEAD_H,W,HEAD_H,T.gridL,1));
+  els.push(_line(LABEL_W,0,LABEL_W,H,T.gridL,1));
+
+  signals.forEach((_,ri) => {
+    const y = signalTopY[ri] + SIG_H;
+    els.push(_line(LABEL_W,y,W,y,T.grid,0.5,'2 4'));
+  });
+
+  const sigRowY = {};
+  const waveEls = [];
+  signals.forEach((sig, ri) => {
+    const topY = signalTopY[ri];
+    if (!sig?.name) {
+      els.push(_line(LABEL_W+4,topY+SIG_H/2,W-4,topY+SIG_H/2,T.grid,0.5,'3 5')); return;
+    }
+    sigRowY[sig.name] = topY;
+    els.push(_txt(LABEL_W-8, topY+SIG_H/2+4, sig.name, T.label, 11, 500, 'end'));
+    if (sig.wave) buildWaveSVG(waveEls, sig, topY, CELL_W, T, slopeFrac);
+  });
+  els.push(`<g clip-path="url(#waveArea)">${waveEls.join('\n')}</g>`);
+
+  // ── nodeRail (cross-signal direction) ─────────────────────────────
+  const nodeRail = {};
+  if (Array.isArray(spec.edge) && spec.node) {
+    spec.edge.forEach(str => {
+      const m = str.match(/^([A-Za-z0-9]+)\s*[→>~-]+\s*([A-Za-z0-9]+)/);
+      if (!m) return;
+      const na = spec.node[m[1]], nb = spec.node[m[2]];
+      if (!na || !nb || na.signal === nb.signal) return;
+      const ia = signals.findIndex(s => s?.name === na.signal);
+      const ib = signals.findIndex(s => s?.name === nb.signal);
+      if (ia < 0 || ib < 0) return;
+      nodeRail[m[1]] = ib > ia ? 'lo' : 'hi';
+      nodeRail[m[2]] = ia > ib ? 'lo' : 'hi';
+    });
+  }
+
+  // ── nodeXY ────────────────────────────────────────────────────────
+  const nodeXY = {};
+  if (spec.node) {
+    Object.entries(spec.node).forEach(([key, nd]) => {
+      const ty = sigRowY[nd.signal]; if (ty === undefined) return;
+      const hi = ty+6, lo = ty+SIG_H-6, mid2 = ty+SIG_H/2;
+      const sigObj = signals.find(s => s?.name === nd.signal);
+      const period2 = sigObj?.period || 1, phase2 = sigObj?.phase || 0;
+      const CW2 = CELL_W * period2;
+      const x0 = LABEL_W + (phase2 + nd.cycle * period2) * CELL_W;
+      const busSlope = slopeForCW(slopeFrac, CW2);
+      let nx = x0, ny = mid2;
+      if (sigObj?.wave) {
+        const res = resolveWave(sigObj.wave);
+        const ch = res[Math.floor(nd.cycle)] || '0';
+        const isBus = ch==='d'||ch==='D'||ch==='='||/^[2-9]$/.test(ch);
+        if (isBus && (nd.anchor === 'e' || nd.anchor === 's')) {
+          nx = nd.anchor === 'e' ? x0 + CW2 - busSlope : x0 + busSlope;
+          ny = nodeRail[key] === 'lo' ? lo : hi;
+        } else if (isBus) {
+          const ci = Math.floor(nd.cycle);
+          const prevCh = ci > 0 ? res[ci - 1] : null;
+          const prevIsBus = prevCh && (prevCh==='d'||prevCh==='D'||prevCh==='='||/^[2-9]$/.test(prevCh));
+          ny = (!prevIsBus && prevCh) ? (levelY(prevCh, hi, lo, mid2) ?? mid2) : mid2;
+        } else {
+          const fy = levelY(ch, hi, lo, mid2);
+          ny = (fy !== null && fy !== mid2 && nodeRail[key]) ? (nodeRail[key] === 'lo' ? lo : hi) : (fy ?? mid2);
+        }
+      }
+      nodeXY[key] = {x: nx, y: ny, signal: nd.signal};
+      els.push(_tag('circle',{cx:nx,cy:ny,r:3,fill:T.edge}));
+    });
+  }
+
+  // ── edge routing + rendering ──────────────────────────────────────
+  if (Array.isArray(spec.edge)) {
+    const gapGroups   = new Map();
+    const sameSigHi   = new Map();
+    const sameSigLo   = new Map();
+
+    spec.edge.forEach(str => {
+      const m = str.match(/^([A-Za-z0-9]+)\s*[→>~-]+\s*([A-Za-z0-9]+)\s*(.*)?$/);
+      if (!m) return;
+      const p1 = nodeXY[m[1]], p2 = nodeXY[m[2]]; if (!p1||!p2) return;
+      const lbl = m[3]?.trim() || '';
+      const isCross = p1.signal && p2.signal && p1.signal !== p2.signal;
+      if (isCross) {
+        const i1 = signals.findIndex(s => s?.name === p1.signal);
+        const i2 = signals.findIndex(s => s?.name === p2.signal);
+        const gapIdx = Math.max(i1, i2) - 1;
+        if (!gapGroups.has(gapIdx)) gapGroups.set(gapIdx, []);
+        gapGroups.get(gapIdx).push({ p1, p2, lbl });
+      } else {
+        const si = signals.findIndex(s => s?.name === p1.signal);
+        if (sameHi.has(si)) {
+          if (!sameSigHi.has(si)) sameSigHi.set(si, []);
+          sameSigHi.get(si).push({ p1, p2, lbl });
+        } else if (sameLo.has(si)) {
+          if (!sameSigLo.has(si)) sameSigLo.set(si, []);
+          sameSigLo.get(si).push({ p1, p2, lbl });
+        } else {
+          // diagonal arrow fallback
+          els.push(_line(p1.x,p1.y,p2.x,p2.y,T.edge,1.2,'4 3'));
+          const angle = Math.atan2(p2.y-p1.y,p2.x-p1.x), aL=8, aO=0.38;
+          const pts = [`${p2.x},${p2.y}`,
+            `${p2.x-aL*Math.cos(angle-aO)},${p2.y-aL*Math.sin(angle-aO)}`,
+            `${p2.x-aL*Math.cos(angle+aO)},${p2.y-aL*Math.sin(angle+aO)}`].join(' ');
+          els.push(_tag('polygon',{points:pts,fill:T.edge}));
+          if (lbl) els.push(_txt((p1.x+p2.x)/2,Math.min(p1.y,p2.y)-7,lbl,T.edge,10,400,'middle'));
+        }
+      }
+    });
+
+    const renderBrackets = (groupMap, getBaseY, sign) => {
+      groupMap.forEach((brackets, key) => {
+        const baseY = getBaseY(key);
+        const intervals = brackets.map(b => ({ x1: Math.min(b.p1.x, b.p2.x), x2: Math.max(b.p1.x, b.p2.x) }));
+        const rows = assignBracketRows(intervals);
+        brackets.forEach((b, j) => {
+          const midY = baseY + sign * DELAY_GAP * (rows[j] + 0.5);
+          drawDelayBracketSVG(els, b.p1.x, b.p1.y, b.p2.x, b.p2.y, midY, b.lbl, T);
+        });
+      });
+    };
+
+    renderBrackets(gapGroups,  gapIdx => signalTopY[gapIdx] + SIG_H, 1);
+    renderBrackets(sameSigHi,  si     => signalTopY[si],              -1);
+    renderBrackets(sameSigLo,  si     => signalTopY[si] + SIG_H,      1);
+  }
+
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">\n${els.join('\n')}\n</svg>`;
+}
+
+function buildWaveSVG(els, sig, topY, CELL_W, T, slopeFrac = null) {
+  const hi = topY+6, lo = topY+SIG_H-6, mid = topY+SIG_H/2;
+  const period = sig.period || 1;
+  const phase  = sig.phase  || 0;
+  const CW     = CELL_W * period;
+  const slope  = slopeForCW(slopeFrac, CW);
+  const resolved = resolveWave(sig.wave);
+  const data = sig.data ? [...sig.data] : [];
+  const di = {i:0};
+  const sw = T.waveW;
+
+  const hln = (x0,x1,y,c,dash='') => els.push(_line(x0,y,x1,y,c,sw,dash));
+  const vln = (x,y0,y1,c) => els.push(_line(x,y0,x,y1,c,sw));
+
+  let prev = null;
+  let curBusColor = T.bus;
+  let lastY = null;
+
+  if (phase > 0 && resolved.length > 0) {
+    const firstCh = resolved[0];
+    const fillX1 = LABEL_W + phase * CELL_W;
+    if      (firstCh === '0' || firstCh === 'l' || firstCh === 'L') { hln(LABEL_W, fillX1, lo, T.low); lastY = lo; }
+    else if (firstCh === '1' || firstCh === 'h' || firstCh === 'H') { hln(LABEL_W, fillX1, hi, T.high); lastY = hi; }
+    else if (firstCh === 'p' || firstCh === 'P')                    { hln(LABEL_W, fillX1, lo, T.clk); lastY = lo; }
+    else if (firstCh === 'n' || firstCh === 'N')                    { hln(LABEL_W, fillX1, hi, T.clk); lastY = hi; }
+    else if (firstCh === 'z' || firstCh === 'Z')                    { hln(LABEL_W, fillX1, mid, T.z, '5 3'); lastY = mid; }
+  }
+
+  for (let i = 0; i < resolved.length; i++) {
+    const ch = resolved[i];
+    const x0 = LABEL_W + (phase + i * period) * CELL_W, x1 = x0 + CW;
+
+    if (ch==='1'||ch==='h'||ch==='H') {
+      const fy=lastY!==null?lastY:levelY(prev,hi,lo,mid); if(fy!==null&&fy!==hi) vln(x0,fy,hi,T.high);
+      hln(x0,x1,hi,T.high); lastY=hi; prev='1';
+
+    } else if (ch==='0'||ch==='l'||ch==='L') {
+      const fy=lastY!==null?lastY:levelY(prev,hi,lo,mid); if(fy!==null&&fy!==lo) vln(x0,fy,lo,T.low);
+      hln(x0,x1,lo,T.low); lastY=lo; prev='0';
+
+    } else if (ch==='z'||ch==='Z') {
+      const fy=lastY!==null?lastY:levelY(prev,hi,lo,mid); if(fy!==null&&fy!==mid) vln(x0,fy,mid,T.z);
+      hln(x0,x1,mid,T.z,'5 3'); lastY=mid; prev='z';
+
+    } else if (ch==='x'||ch==='X') {
+      let xEnd = i;
+      while (xEnd + 1 < resolved.length && (resolved[xEnd + 1] === 'x' || resolved[xEnd + 1] === 'X')) xEnd++;
+      const runX0 = (i === 0 && phase > 0) ? LABEL_W : x0;
+      const runX1 = LABEL_W + (phase + (xEnd + 1) * period) * CELL_W;
+      const prevState = prev;
+      const nextState = xEnd + 1 < resolved.length ? resolved[xEnd + 1] : null;
+      const entryFromLogic = prevState && '01hHlLpn'.includes(prevState);
+      const exitToLogic    = nextState && '01hHlLpn'.includes(nextState);
+
+      const topPts = [], botPts = [];
+      if (entryFromLogic) {
+        const fy = levelY(prevState, hi, lo, mid);
+        topPts.push([runX0, fy], [runX0 + slope, hi]);
+        botPts.push([runX0, fy], [runX0 + slope, lo]);
+      } else {
+        topPts.push([runX0, mid], [runX0 + slope, hi]);
+        botPts.push([runX0, mid], [runX0 + slope, lo]);
+      }
+      if (exitToLogic) {
+        const ty2 = levelY(nextState, hi, lo, mid);
+        topPts.push([runX1 - slope, hi], [runX1, ty2]);
+        botPts.push([runX1 - slope, lo], [runX1, ty2]);
+      } else {
+        topPts.push([runX1 - slope, hi], [runX1, mid]);
+        botPts.push([runX1 - slope, lo], [runX1, mid]);
+      }
+
+      const allPts = [...topPts, ...[...botPts].reverse()];
+      const clipId = `xc${Math.round(runX0)}_${Math.round(topY)}`;
+      els.push(`<clipPath id="${clipId}"><polygon points="${allPts.map(p=>p.join(',')).join(' ')}"/></clipPath>`);
+      els.push(_tag('polygon',{points:allPts.map(p=>p.join(',')).join(' '),fill:T.x+'22',stroke:'none'}));
+      const hatchGap = 8;
+      const hatchEls = [];
+      for (let d = -(lo - hi); d < (runX1 - runX0) + (lo - hi); d += hatchGap)
+        hatchEls.push(_line(runX0 + d, hi, runX0 + d + (lo - hi), lo, T.x + 'aa', 1));
+      els.push(`<g clip-path="url(#${clipId})">${hatchEls.join('')}</g>`);
+      els.push(_tag('polyline',{points:topPts.map(p=>p.join(',')).join(' '),stroke:T.x,'stroke-width':sw,fill:'none','stroke-linecap':'square'}));
+      els.push(_tag('polyline',{points:botPts.map(p=>p.join(',')).join(' '),stroke:T.x,'stroke-width':sw,fill:'none','stroke-linecap':'square'}));
+
+      i = xEnd; lastY = exitToLogic ? levelY(nextState, hi, lo, mid) : mid; prev = 'x';
+
+    } else if (ch==='p'||ch==='P') {
+      const ex=x0+CW/2;
+      const fy=lastY!==null?lastY:levelY(prev,hi,lo,mid); if(fy!==null&&fy!==lo) vln(x0,fy,lo,T.clk);
+      hln(x0,ex,lo,T.clk); vln(ex,lo,hi,T.clk); hln(ex,x1,hi,T.clk);
+      if(ch==='P') els.push(_tag('polygon',{points:`${ex},${hi-2} ${ex-3},${hi+7} ${ex+3},${hi+7}`,fill:T.clk}));
+      lastY=hi; prev='p';
+
+    } else if (ch==='n'||ch==='N') {
+      const ex=x0+CW/2;
+      const fy=lastY!==null?lastY:levelY(prev,hi,lo,mid); if(fy!==null&&fy!==hi) vln(x0,fy,hi,T.clk);
+      hln(x0,ex,hi,T.clk); vln(ex,hi,lo,T.clk); hln(ex,x1,lo,T.clk);
+      if(ch==='N') els.push(_tag('polygon',{points:`${ex},${lo+2} ${ex-3},${lo-7} ${ex+3},${lo-7}`,fill:T.clk}));
+      lastY=lo; prev='n';
+
+    } else if (ch==='d'||ch==='D'||ch==='='||/^[2-9]$/.test(ch)) {
+      const isLabel=ch==='='||/^[2-9]$/.test(ch);
+      const lbl=isLabel?(data[di.i++]||''):null;
+      if(isLabel) curBusColor=/^[2-9]$/.test(ch)?T.busColors[parseInt(ch)-2]:T.bus;
+      const isNew=prev!=='d'&&prev!=='D'&&prev!=='='&&!/^[2-9]$/.test(prev||'');
+      const isLabelBoundary = isLabel && !isNew;
+      const nextCh = resolved[i + 1] || null;
+      const isEnd = nextCh === null || (nextCh !== 'd' && nextCh !== 'D');
+      const entryY = isNew ? (lastY !== null ? lastY : (levelY(prev,hi,lo,mid) ?? mid)) : mid;
+      const exitY2 = isEnd ? (levelY(nextCh,hi,lo,mid) ?? mid) : mid;
+      const railEnd = isEnd ? x1 - slope : x1;
+      const color = curBusColor;
+      const pts=[];
+      if(isNew||isLabelBoundary){pts.push([x0,entryY],[x0+slope,hi]);}else{pts.push([x0,hi]);}
+      pts.push([railEnd,hi]);
+      if(isEnd){pts.push([x1,exitY2],[railEnd,lo]);}else{pts.push([x1,lo]);}
+      if(isNew||isLabelBoundary){pts.push([x0+slope,lo],[x0,entryY]);}else{pts.push([x0,lo]);}
+      els.push(_tag('polygon',{points:pts.map(p=>p.join(',')).join(' '),fill:color+'1a',stroke:'none'}));
+      const top=isNew||isLabelBoundary?[[x0,entryY],[x0+slope,hi],[railEnd,hi]]:[[x0,hi],[railEnd,hi]];
+      const bot=isNew||isLabelBoundary?[[x0,entryY],[x0+slope,lo],[railEnd,lo]]:[[x0,lo],[railEnd,lo]];
+      if(isEnd){top.push([x1,exitY2]); bot.push([x1,exitY2]);}
+      els.push(_tag('polyline',{points:top.map(p=>p.join(',')).join(' '),stroke:color,'stroke-width':sw,fill:'none','stroke-linecap':'square'}));
+      els.push(_tag('polyline',{points:bot.map(p=>p.join(',')).join(' '),stroke:color,'stroke-width':sw,fill:'none','stroke-linecap':'square'}));
+      if(lbl){
+        const lx=isNew||isLabelBoundary?x0+slope:x0;
+        els.push(_tag('text',{x:(lx+railEnd)/2,y:mid+4,fill:color,'font-family':'"Roboto Mono", monospace','font-size':10,'font-weight':500,'text-anchor':'middle'},escXML(lbl)));
+      }
+      lastY = isEnd ? exitY2 : null;
+      prev=isLabel?ch:'d';
+    }
+  }
+}
+
+// ───── js/export.js ─────
+function exportPNG(spec, themeName, scale) {
+  const T = THEMES[themeName] || THEMES.light;
+  const hscale = spec.config?.hscale || 1;
+  const { signals, maxLen, CELL_W, W, H, signalTopY, gapAfter, gapCounts, sameHi, sameLo, slopeFrac } = geometry(spec, hscale);
+  const canvas = document.createElement('canvas');
+  canvas.width = W * scale; canvas.height = H * scale;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(scale, scale);
+  ctx.fillStyle = T.bg; ctx.fillRect(0, 0, W, H);
+  drawAll(ctx, T, spec, signals, maxLen, CELL_W, W, H, signalTopY, gapAfter, gapCounts, sameHi, sameLo, slopeFrac);
+  const a = document.createElement('a');
+  a.download = 'timing_diagram.png';
+  a.href = canvas.toDataURL('image/png');
+  a.click();
+}
+
+function exportSVG(spec, themeName) {
+  const T = THEMES[themeName] || THEMES.light;
+  const hscale = spec.config?.hscale || 1;
+  const { signals, maxLen, CELL_W, W, H, signalTopY, gapAfter, gapCounts, sameHi, sameLo, slopeFrac } = geometry(spec, hscale);
+  const svgStr = buildSVG(spec, signals, maxLen, CELL_W, W, H, T, signalTopY, gapAfter, gapCounts, sameHi, sameLo, slopeFrac);
+  const blob = new Blob([svgStr], { type: 'image/svg+xml' });
+  const a = document.createElement('a');
+  a.download = 'timing_diagram.svg';
+  a.href = URL.createObjectURL(blob);
+  a.click();
+}
+
+// ───── js/app.js ─────
+const DEFAULT = `{
+  "title": "Diagram",
+  "config": {
+    "hscale": 2
+  },
+  "timing": {
+    "unit": "ns",
+    "period": 10
+  },
+  "signal": [
+    {
+      "name": "CLK",
+      "wave": "P..................0"
+    }
+  ],
+  "edge": ["A→B tCLK"],
+  "node": {
+    "A": {
+      "signal": "CLK",
+      "cycle": 1.5
+    },
+    "B": {
+      "signal": "CLK",
+      "cycle": 2.5
+    }
+  }
+}`;
+
+// ─── State ─────────────────────────────────────────────────────────────────────
+let zoom = 1.0;
+let activeTool = 'pointer';
+let cursorPos = null;
+let measureAnchor = null;
+let annotateAnchor = null;
+let pendingConstraint = null;
+let cellEditTarget = null;
+let _cellEditorJustShown = false;
+let workingSpec = null;
+let _geo = null;
+let hitRegions = { handles: [], labels: [], waves: [], edges: [] };
+const drag = { active: false, type: null, idx: -1, startX: 0, startY: 0, curX: 0, curY: 0, origPhase: 0, started: false };
+let dragPhaseOverride = null;
+let renderTimer;
+
+// ─── DOM refs ──────────────────────────────────────────────────────────────────
+const sourceEl       = document.getElementById('source');
+const errorBar       = document.getElementById('errorBar');
+const waveCanvas     = document.getElementById('waveCanvas');
+const cursorCanvas   = document.getElementById('cursorCanvas');
+const edPane         = document.getElementById('editorPane');
+const divider        = document.getElementById('divider');
+const addSignalModal = document.getElementById('addSignalModal');
+const ctxMenu        = document.getElementById('ctxMenu');
+
+// ─── Init ──────────────────────────────────────────────────────────────────────
+sourceEl.value = localStorage.getItem('wavetool_source') || DEFAULT;
+
+// ─── Spec management ───────────────────────────────────────────────────────────
+function parseSpecFromEditor() {
+  try {
+    workingSpec = parseSpec(sourceEl.value);
+    errorBar.textContent = ''; errorBar.classList.remove('visible');
+    return true;
+  } catch(e) {
+    errorBar.textContent = '⚠ JSON error: ' + e.message;
+    errorBar.classList.add('visible');
+    return false;
+  }
+}
+
+function syncEditorFromSpec() {
+  sourceEl.value = formatSpec(workingSpec);
+  localStorage.setItem('wavetool_source', sourceEl.value);
+}
+
+// ─── Render ────────────────────────────────────────────────────────────────────
+function render() {
+  if (!workingSpec && !parseSpecFromEditor()) return;
+
+  let spec = workingSpec;
+  if (dragPhaseOverride !== null) {
+    const sigs = spec.signal.map((s, i) =>
+      i === dragPhaseOverride.idx ? { ...s, phase: dragPhaseOverride.phase } : s);
+    spec = { ...spec, signal: sigs };
+  }
+
+  const T = THEMES.dark;
+  const hscale = (spec.config?.hscale || 1) * zoom;
+  const geo = geometry(spec, hscale);
+  const { signals, maxLen, CELL_W, W, H, signalTopY, gapAfter, gapCounts, sameHi, sameLo } = geo;
+  _geo = geo;
+
+  hitRegions.handles = []; hitRegions.labels = []; hitRegions.waves = []; hitRegions.edges = [];
+  signals.forEach((sig, i) => {
+    const ty = signalTopY[i];
+    hitRegions.handles.push({ idx: i, x: 0, y: ty, w: HANDLE_W, h: SIG_H });
+    if (!sig?.name) return;
+    hitRegions.labels.push({ idx: i, x: HANDLE_W, y: ty, w: LABEL_W - HANDLE_W, h: SIG_H });
+    hitRegions.waves .push({ idx: i, x: LABEL_W,  y: ty, w: W - LABEL_W,        h: SIG_H });
+  });
+
+  waveCanvas.width = W; waveCanvas.height = H;
+  cursorCanvas.width = W; cursorCanvas.height = H;
+  const ctx = waveCanvas.getContext('2d');
+  ctx.fillStyle = T.bg; ctx.fillRect(0, 0, W, H);
+  drawAll(ctx, T, spec, signals, maxLen, CELL_W, W, H, signalTopY, gapAfter, gapCounts, sameHi, sameLo, _geo.slopeFrac);
+  hitRegions.edges = computeEdgeHitRegions();
+
+  signals.forEach((sig, i) => {
+    if (!sig?.name) return;
+    const my = signalTopY[i] + SIG_H / 2;
+    ctx.fillStyle = drag.active && drag.type === 'row' && drag.idx === i ? '#6a7898' : '#3a4258';
+    [-3, 0, 3].forEach(dy => ctx.fillRect(3, my + dy - 0.6, 8, 1.2));
+  });
+
+  if (drag.active && drag.type === 'row') {
+    ctx.fillStyle = 'rgba(77,142,240,0.08)';
+    ctx.fillRect(0, signalTopY[drag.idx], W, SIG_H);
+    const ins = computeInsertionIdx(drag.curY);
+    const lineY = ins <= 0 ? signalTopY[0]
+                : ins >= signals.length ? signalTopY[signals.length - 1] + SIG_H
+                : signalTopY[ins];
+    ctx.strokeStyle = '#4d8ef0'; ctx.lineWidth = 2; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(0, lineY); ctx.lineTo(W, lineY); ctx.stroke();
+  }
+}
+
+// ─── Zoom ──────────────────────────────────────────────────────────────────────
+function zoomIn()  { zoom = Math.min(zoom * 1.25, 6);   render(); }
+function zoomOut() { zoom = Math.max(zoom / 1.25, 0.3); render(); }
+
+// ─── Export modal ──────────────────────────────────────────────────────────────
+function openExportModal() { document.getElementById('exportModal').style.display = 'flex'; }
+function closeExportModal() { document.getElementById('exportModal').style.display = 'none'; }
+
+function doExportPNG() {
+  if (!workingSpec) return;
+  const theme = document.getElementById('exportTheme').value;
+  const scale = parseInt(document.getElementById('pngScale').value) || 1;
+  exportPNG(workingSpec, theme, scale);
+  closeExportModal();
+}
+
+function doExportSVG() {
+  if (!workingSpec) return;
+  exportSVG(workingSpec, document.getElementById('exportTheme').value);
+  closeExportModal();
+}
+
+// ─── JSON pane toggle ──────────────────────────────────────────────────────────
+function toggleJSON() {
+  const hidden = edPane.style.display === 'none';
+  edPane.style.display   = hidden ? 'flex' : 'none';
+  divider.style.display  = hidden ? 'block' : 'none';
+  document.getElementById('btnToggleJSON').classList.toggle('tool-active', hidden);
+  localStorage.setItem('wavetool_json_visible', hidden ? '1' : '0');
+}
+
+// ─── Tool management ───────────────────────────────────────────────────────────
+function setTool(tool) {
+  activeTool = tool;
+  document.getElementById('btnPointer') .classList.toggle('tool-active', tool === 'pointer');
+  document.getElementById('btnSelect')  .classList.toggle('tool-active', tool === 'select');
+  document.getElementById('btnMeasure') .classList.toggle('tool-active', tool === 'measure');
+  document.getElementById('btnConstrain').classList.toggle('tool-active', tool === 'constrain');
+  if (tool !== 'measure' && tool !== 'constrain') { cursorPos = null; renderCursor(); }
+  if (tool !== 'constrain') { annotateAnchor = null; renderCursor(); }
+  waveCanvas.style.cursor = (tool === 'measure' || tool === 'constrain') ? 'crosshair' : '';
+}
+
+// ─── Cursor / measure tool ─────────────────────────────────────────────────────
+function edgesForSig(sig) {
+  if (!sig?.wave || !_geo) return [];
+  const { CELL_W, slopeFrac } = _geo;
+  const period = sig.period || 1, phase = sig.phase || 0;
+  const CW = CELL_W * period;
+  const slope = slopeForCW(slopeFrac, CW);
+  const res = resolveWave(sig.wave);
+  const isBusChar = ch => ch === 'd' || ch === 'D' || ch === '=' || /^[2-9]$/.test(ch);
+  const edges = [];
+  for (let i = 0; i <= res.length; i++) {
+    const x0 = LABEL_W + (phase + i * period) * CELL_W;
+    edges.push(x0);
+    if (i < res.length) {
+      const ch = res[i];
+      if ('pPnN'.includes(ch)) edges.push(x0 + CW / 2);
+      if (isBusChar(ch) && ch !== 'd' && ch !== 'D') {
+        // start of stable data region (after entry chamfer)
+        edges.push(x0 + slope);
+      }
+      if (isBusChar(ch)) {
+        const chNext = i + 1 < res.length ? res[i + 1] : null;
+        if (!chNext || (chNext !== 'd' && chNext !== 'D')) {
+          // end of stable data region (before exit chamfer)
+          edges.push(x0 + CW - slope);
+        }
+      }
+    }
+  }
+  return edges;
+}
+
+function findNearestEdge(x, y) {
+  if (!workingSpec || !_geo) return null;
+  const { signals, signalTopY, CELL_W } = _geo;
+  const SNAP_R = 8;
+
+  // Find hovered signal row
+  let hovSig = null;
+  if (y !== undefined) {
+    for (let i = 0; i < signals.length; i++) {
+      if (y >= signalTopY[i] && y < signalTopY[i] + SIG_H && signals[i]?.wave) {
+        hovSig = signals[i]; break;
+      }
+    }
+  }
+
+  // Hovered signal + its nodes get 2× snap radius, win outright if found
+  if (hovSig) {
+    let best = null, bestD = SNAP_R * 2;
+    for (const ex of edgesForSig(hovSig)) {
+      const d = Math.abs(x - ex);
+      if (d < bestD) { bestD = d; best = ex; }
+    }
+    if (workingSpec.node) {
+      for (const nd of Object.values(workingSpec.node)) {
+        if (nd.signal !== hovSig.name) continue;
+        const nx = nodeXApprox(nd, signals, CELL_W);
+        const d = Math.abs(x - nx);
+        if (d < bestD) { bestD = d; best = nx; }
+      }
+    }
+    if (best !== null) return best;
+  }
+
+  // Fall back: all signals + all nodes at normal radius
+  let best = null, bestD = SNAP_R;
+  for (const sig of (workingSpec.signal || [])) {
+    if (sig === hovSig) continue;
+    for (const ex of edgesForSig(sig)) {
+      const d = Math.abs(x - ex);
+      if (d < bestD) { bestD = d; best = ex; }
+    }
+  }
+  if (workingSpec.node) {
+    for (const nd of Object.values(workingSpec.node)) {
+      const nx = nodeXApprox(nd, signals, CELL_W);
+      const d = Math.abs(x - nx);
+      if (d < bestD) { bestD = d; best = nx; }
+    }
+  }
+  return best;
+}
+
+function timeLabelFromFrac(frac) {
+  if (workingSpec?.timing?.period > 0) {
+    const t = frac * workingSpec.timing.period;
+    return parseFloat(t.toPrecision(5)) + ' ' + (workingSpec.timing.unit || '');
+  }
+  return 't=' + parseFloat(frac.toPrecision(4));
+}
+
+function drawCursorPill(ctx, x, label, W, above = true) {
+  const MONO = '"Roboto Mono", monospace';
+  ctx.font = `500 10px ${MONO}`;
+  const tw = ctx.measureText(label).width;
+  const lx = Math.min(x + 6, W - tw - 12);
+  const ty = above ? HEAD_H - 22 : HEAD_H + 6;
+  ctx.fillStyle = 'rgba(20,24,36,0.9)';
+  ctx.fillRect(lx - 4, ty, tw + 12, 14);
+  ctx.fillStyle = '#4d8ef0';
+  ctx.textAlign = 'left';
+  ctx.fillText(label, lx + 2, ty + 11);
+}
+
+function renderCursor() {
+  const ctx = cursorCanvas.getContext('2d');
+  ctx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
+  if (!cursorPos || !_geo) return;
+  const { CELL_W, W, H } = _geo;
+
+  if (activeTool === 'measure') {
+    if (cursorPos.x < LABEL_W || cursorPos.x > W) return;
+    const snapX = findNearestEdge(cursorPos.x, cursorPos.y) ?? cursorPos.x;
+    if (measureAnchor !== null) {
+      const x1 = Math.min(measureAnchor, snapX), x2 = Math.max(measureAnchor, snapX);
+      ctx.fillStyle = 'rgba(77,142,240,0.07)';
+      ctx.fillRect(x1, HEAD_H, x2 - x1, H - HEAD_H - 8);
+      ctx.strokeStyle = 'rgba(77,142,240,0.9)';
+      ctx.lineWidth = 1; ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(measureAnchor, HEAD_H); ctx.lineTo(measureAnchor, H - 8); ctx.stroke();
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath(); ctx.moveTo(snapX, HEAD_H); ctx.lineTo(snapX, H - 8); ctx.stroke();
+      ctx.setLineDash([]);
+      const delta = Math.abs(snapX - measureAnchor) / CELL_W;
+      drawCursorPill(ctx, (measureAnchor + snapX) / 2 - 30, 'Δ ' + timeLabelFromFrac(delta), W, true);
+    } else {
+      ctx.strokeStyle = 'rgba(77,142,240,0.8)';
+      ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
+      ctx.beginPath(); ctx.moveTo(snapX, HEAD_H); ctx.lineTo(snapX, H - 8); ctx.stroke();
+      ctx.setLineDash([]);
+      drawCursorPill(ctx, snapX, timeLabelFromFrac((snapX - LABEL_W) / CELL_W), W, true);
+    }
+    return;
+  }
+
+  if (activeTool === 'constrain') {
+    const snap = snapToConstraintPoint(cursorPos);
+    const AMBER = '#f0a040';
+    if (annotateAnchor) {
+      const tx = snap ? snap.x : cursorPos.x;
+      const ty = snap ? snap.y : cursorPos.y;
+      ctx.strokeStyle = AMBER; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]);
+      ctx.beginPath(); ctx.moveTo(annotateAnchor.x, annotateAnchor.y);
+      ctx.lineTo(tx, ty); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = AMBER;
+      ctx.beginPath(); ctx.arc(annotateAnchor.x, annotateAnchor.y, 4, 0, Math.PI * 2); ctx.fill();
+      if (snap) { ctx.beginPath(); ctx.arc(tx, ty, 4, 0, Math.PI * 2); ctx.fill(); }
+    } else if (snap) {
+      ctx.strokeStyle = AMBER; ctx.lineWidth = 1.5; ctx.setLineDash([]);
+      ctx.beginPath(); ctx.arc(snap.x, snap.y, 5, 0, Math.PI * 2); ctx.stroke();
+    }
+    return;
+  }
+}
+
+// ─── Constraint tool ───────────────────────────────────────────────────────────
+function snapToConstraintPoint(pos) {
+  if (!workingSpec || !_geo) return null;
+  const { signals, signalTopY, CELL_W, slopeFrac } = _geo;
+  let sigIdx = -1;
+  for (let i = 0; i < signals.length; i++) {
+    if (pos.y >= signalTopY[i] && pos.y < signalTopY[i] + SIG_H && signals[i]?.name && signals[i]?.wave) {
+      sigIdx = i; break;
+    }
+  }
+  if (sigIdx < 0) return null;
+
+  const sig = signals[sigIdx];
+  const topY = signalTopY[sigIdx];
+  const hi = topY + 6, lo = topY + SIG_H - 6, mid = topY + SIG_H / 2;
+  const period = sig.period || 1, phase = sig.phase || 0;
+  const CW = CELL_W * period;
+  const res = resolveWave(sig.wave);
+  const slope = slopeForCW(slopeFrac, CW);
+  const SNAP_R = 22;
+  const isBusChar  = ch => ch === 'd' || ch === 'D' || ch === '=' || /^[2-9]$/.test(ch);
+  const isBusLabel = ch => ch === '=' || /^[2-9]$/.test(ch);
+  // entry Y = wave level at start of a cell (opposite for clock)
+  const entryY = ch => 'pP'.includes(ch) ? lo : 'nN'.includes(ch) ? hi : (levelY(ch, hi, lo, mid) ?? mid);
+  const exitY  = ch => levelY(ch, hi, lo, mid) ?? mid;
+
+  const pts = [];
+
+  for (let i = 0; i <= res.length; i++) {
+    const x = LABEL_W + (phase + i * period) * CELL_W;
+    const chR = i < res.length ? res[i]     : null;
+    const chL = i > 0          ? res[i - 1] : null;
+
+    // Cell-boundary candidates — non-bus entry/exit Y
+    if (chR && !isBusChar(chR)) {
+      pts.push({ signal: sig.name, cycle: i, x, y: entryY(chR) });
+    }
+    if (chL && !isBusChar(chL)) {
+      const ey = exitY(chL);
+      const ry = chR && !isBusChar(chR) ? entryY(chR) : null;
+      if (ry !== ey) pts.push({ signal: sig.name, cycle: i, x, y: ey });
+    }
+    // Bus entry — where previous non-bus signal meets bus chamfer
+    if (chR && isBusLabel(chR) && chL && !isBusChar(chL)) {
+      pts.push({ signal: sig.name, cycle: i, x, y: exitY(chL) });
+    }
+
+    if (i < res.length) {
+      // Bus-start trapezoid slope (anchor 's') — at start of each new bus segment
+      if (isBusLabel(chR)) {
+        pts.push({ signal: sig.name, cycle: i, anchor: 's', x: x + slope, y: hi });
+      }
+      // Bus-end trapezoid slope (anchor 'e') — at end of each bus segment (not continued by 'd')
+      if (chR && isBusChar(chR)) {
+        const chNext = i + 1 < res.length ? res[i + 1] : null;
+        if (!chNext || (chNext !== 'd' && chNext !== 'D')) {
+          pts.push({ signal: sig.name, cycle: i, anchor: 'e', x: x + CW - slope, y: hi });
+        }
+      }
+      // Clock mid-cell transition point
+      if (chR && 'pP'.includes(chR)) {
+        pts.push({ signal: sig.name, cycle: i + 0.5, x: x + CW / 2, y: hi });
+      }
+      if (chR && 'nN'.includes(chR)) {
+        pts.push({ signal: sig.name, cycle: i + 0.5, x: x + CW / 2, y: lo });
+      }
+    }
+  }
+
+  // Find nearest candidate by 2-D Euclidean distance
+  let best = null, bestD = SNAP_R;
+  for (const c of pts) {
+    const d = Math.hypot(pos.x - c.x, pos.y - c.y);
+    if (d < bestD) { bestD = d; best = c; }
+  }
+  return best;
+}
+
+function nextNodeKey() {
+  const used = new Set(Object.keys(workingSpec.node || {}));
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+  for (const c of chars) if (!used.has(c)) return c;
+  let n = 0; while (used.has('n' + n)) n++; return 'n' + n;
+}
+
+function addConstraint(anchor, target, label) {
+  if (!workingSpec) return;
+  if (!workingSpec.node) workingSpec.node = {};
+  if (!workingSpec.edge) workingSpec.edge = [];
+  const k1 = nextNodeKey();
+  const nd1 = { signal: anchor.signal, cycle: anchor.cycle };
+  if (anchor.anchor) nd1.anchor = anchor.anchor;
+  workingSpec.node[k1] = nd1;
+  const k2 = nextNodeKey();
+  const nd2 = { signal: target.signal, cycle: target.cycle };
+  if (target.anchor) nd2.anchor = target.anchor;
+  workingSpec.node[k2] = nd2;
+  workingSpec.edge.push(label ? `${k1}→${k2} ${label}` : `${k1}→${k2}`);
+  syncEditorFromSpec();
+  render();
+}
+
+function computeEdgeHitRegions() {
+  if (!workingSpec?.edge || !_geo) return [];
+  const { signals, signalTopY, CELL_W, sameHi, sameLo, slopeFrac } = _geo;
+
+  const sigRowY = {};
+  signals.forEach((sig, i) => { if (sig?.name) sigRowY[sig.name] = signalTopY[i]; });
+
+  const nodeRail = {};
+  workingSpec.edge.forEach(str => {
+    const m = str.match(/^([A-Za-z0-9]+)\s*[→>~-]+\s*([A-Za-z0-9]+)/);
+    if (!m) return;
+    const na = workingSpec.node?.[m[1]], nb = workingSpec.node?.[m[2]];
+    if (!na || !nb || na.signal === nb.signal) return;
+    const ia = signals.findIndex(s => s?.name === na.signal);
+    const ib = signals.findIndex(s => s?.name === nb.signal);
+    if (ia < 0 || ib < 0) return;
+    nodeRail[m[1]] = ib > ia ? 'lo' : 'hi';
+    nodeRail[m[2]] = ia > ib ? 'lo' : 'hi';
+  });
+
+  const nodeXY = {};
+  Object.entries(workingSpec.node || {}).forEach(([key, nd]) => {
+    const ty = sigRowY[nd.signal]; if (ty === undefined) return;
+    const hi = ty + 6, lo = ty + SIG_H - 6, mid2 = ty + SIG_H / 2;
+    const sigObj = signals.find(s => s?.name === nd.signal);
+    const period2 = sigObj?.period || 1, phase2 = sigObj?.phase || 0;
+    const CW2 = CELL_W * period2;
+    const x0 = LABEL_W + (phase2 + nd.cycle * period2) * CELL_W;
+    const busSlope = slopeForCW(slopeFrac, CW2);
+    let nx = x0, ny = mid2;
+    if (sigObj?.wave) {
+      const res = resolveWave(sigObj.wave);
+      const ch = res[Math.floor(nd.cycle)] || '0';
+      const isBus = ch==='d'||ch==='D'||ch==='='||/^[2-9]$/.test(ch);
+      if (isBus && (nd.anchor === 'e' || nd.anchor === 's')) {
+        nx = nd.anchor === 'e' ? x0 + CW2 - busSlope : x0 + busSlope;
+        ny = nodeRail[key] === 'lo' ? lo : hi;
+      } else if (isBus) {
+        const ci = Math.floor(nd.cycle);
+        const prevCh = ci > 0 ? res[ci - 1] : null;
+        const prevIsBus = prevCh && (prevCh==='d'||prevCh==='D'||prevCh==='='||/^[2-9]$/.test(prevCh));
+        ny = (!prevIsBus && prevCh) ? (levelY(prevCh, hi, lo, mid2) ?? mid2) : mid2;
+      } else {
+        const fy = levelY(ch, hi, lo, mid2);
+        ny = (fy !== null && fy !== mid2 && nodeRail[key]) ? (nodeRail[key] === 'lo' ? lo : hi) : (fy ?? mid2);
+      }
+    }
+    nodeXY[key] = { x: nx, y: ny, signal: nd.signal };
+  });
+
+  const gapGroups = new Map(), sameSigHiMap = new Map(), sameSigLoMap = new Map();
+  const edgePts = [];
+
+  workingSpec.edge.forEach((str, edgeIdx) => {
+    const m = str.match(/^([A-Za-z0-9]+)\s*[→>~-]+\s*([A-Za-z0-9]+)\s*(.*)?$/);
+    if (!m) { edgePts.push(null); return; }
+    const p1 = nodeXY[m[1]], p2 = nodeXY[m[2]];
+    if (!p1 || !p2) { edgePts.push(null); return; }
+    edgePts.push({ p1, p2 });
+    if (p1.signal !== p2.signal) {
+      const i1 = signals.findIndex(s => s?.name === p1.signal);
+      const i2 = signals.findIndex(s => s?.name === p2.signal);
+      const gapIdx = Math.max(i1, i2) - 1;
+      if (!gapGroups.has(gapIdx)) gapGroups.set(gapIdx, []);
+      gapGroups.get(gapIdx).push({ edgeIdx, p1, p2 });
+    } else {
+      const si = signals.findIndex(s => s?.name === p1.signal);
+      if (sameHi?.has(si)) {
+        if (!sameSigHiMap.has(si)) sameSigHiMap.set(si, []);
+        sameSigHiMap.get(si).push({ edgeIdx, p1, p2 });
+      } else if (sameLo?.has(si)) {
+        if (!sameSigLoMap.has(si)) sameSigLoMap.set(si, []);
+        sameSigLoMap.get(si).push({ edgeIdx, p1, p2 });
+      }
+    }
+  });
+
+  const regions = [];
+
+  const addBracketRegions = (groupMap, getBaseY, sign) => {
+    groupMap.forEach((brackets, key) => {
+      const baseY = getBaseY(key);
+      const intervals = brackets.map(b => ({ x1: Math.min(b.p1.x, b.p2.x), x2: Math.max(b.p1.x, b.p2.x) }));
+      const rows = assignBracketRows(intervals);
+      brackets.forEach((b, j) => {
+        const midY = baseY + sign * DELAY_GAP * (rows[j] + 0.5);
+        regions.push({ edgeIdx: b.edgeIdx, x1: Math.min(b.p1.x, b.p2.x), x2: Math.max(b.p1.x, b.p2.x), midY, type: 'bracket' });
+      });
+    });
+  };
+
+  addBracketRegions(gapGroups,    gapIdx => signalTopY[gapIdx] + SIG_H, 1);
+  addBracketRegions(sameSigHiMap, si     => signalTopY[si],              -1);
+  addBracketRegions(sameSigLoMap, si     => signalTopY[si] + SIG_H,      1);
+
+  workingSpec.edge.forEach((_, edgeIdx) => {
+    const pts = edgePts[edgeIdx];
+    if (!pts) return;
+    if (pts.p1.signal === pts.p2.signal) {
+      const si = signals.findIndex(s => s?.name === pts.p1.signal);
+      if (!sameHi?.has(si) && !sameLo?.has(si)) {
+        regions.push({ edgeIdx, p1: pts.p1, p2: pts.p2, type: 'arrow' });
+      }
+    }
+  });
+
+  return regions;
+}
+
+function hitTestEdge(pos) {
+  const HIT_R = 10;
+  for (const r of (hitRegions.edges || [])) {
+    if (r.type === 'bracket') {
+      if (pos.x >= r.x1 - HIT_R && pos.x <= r.x2 + HIT_R && Math.abs(pos.y - r.midY) <= HIT_R) return r.edgeIdx;
+    } else if (r.type === 'arrow') {
+      const dx = r.p2.x - r.p1.x, dy = r.p2.y - r.p1.y;
+      const len = Math.hypot(dx, dy); if (len < 1) continue;
+      const d = Math.abs(dy * pos.x - dx * pos.y + r.p2.x * r.p1.y - r.p2.y * r.p1.x) / len;
+      const t = ((pos.x - r.p1.x) * dx + (pos.y - r.p1.y) * dy) / (len * len);
+      if (d <= HIT_R && t >= -0.1 && t <= 1.1) return r.edgeIdx;
+    }
+  }
+  return -1;
+}
+
+function deleteConstraint(edgeIdx) {
+  if (!workingSpec?.edge) return;
+  const str = workingSpec.edge[edgeIdx];
+  if (!str) return;
+  const m = str.match(/^([A-Za-z0-9]+)\s*[→>~-]+\s*([A-Za-z0-9]+)/);
+  const candidates = m ? new Set([m[1], m[2]]) : new Set();
+  workingSpec.edge.splice(edgeIdx, 1);
+  if (!workingSpec.edge.length) delete workingSpec.edge;
+  if (workingSpec.node && candidates.size) {
+    const stillUsed = new Set();
+    (workingSpec.edge || []).forEach(e => {
+      const em = e.match(/^([A-Za-z0-9]+)\s*[→>~-]+\s*([A-Za-z0-9]+)/);
+      if (em) { stillUsed.add(em[1]); stillUsed.add(em[2]); }
+    });
+    candidates.forEach(k => { if (!stillUsed.has(k)) delete workingSpec.node[k]; });
+    if (!Object.keys(workingSpec.node).length) delete workingSpec.node;
+  }
+  syncEditorFromSpec();
+  render();
+}
+
+function openConstraintModal(anchor, target) {
+  pendingConstraint = { anchor, target };
+  document.getElementById('ctPreset').value = '';
+  document.getElementById('ctLabel').value = '';
+  document.getElementById('ctModalHdr').textContent = 'Add Timing Constraint';
+  document.getElementById('ctAdd').textContent = document.getElementById('ctAdd').dataset.labelAdd;
+  document.getElementById('constraintModal').style.display = 'flex';
+  setTimeout(() => document.getElementById('ctLabel').focus(), 40);
+}
+function openEditConstraintModal(edgeIdx) {
+  const str = workingSpec.edge[edgeIdx];
+  const m = str.match(/^[A-Za-z0-9]+\s*[→>~-]+\s*[A-Za-z0-9]+\s*(.*)?$/);
+  pendingConstraint = { editIdx: edgeIdx };
+  document.getElementById('ctPreset').value = '';
+  document.getElementById('ctLabel').value = m?.[1]?.trim() || '';
+  document.getElementById('ctModalHdr').textContent = 'Edit Timing Constraint';
+  document.getElementById('ctAdd').textContent = document.getElementById('ctAdd').dataset.labelEdit;
+  document.getElementById('constraintModal').style.display = 'flex';
+  setTimeout(() => document.getElementById('ctLabel').focus(), 40);
+}
+function closeConstraintModal() {
+  document.getElementById('constraintModal').style.display = 'none';
+  pendingConstraint = null;
+}
+
+// ─── Hit testing ───────────────────────────────────────────────────────────────
+function canvasPos(e) {
+  const r = waveCanvas.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+
+function hitTest(list, x, y) {
+  return list.find(r => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) || null;
+}
+
+function computeInsertionIdx(y) {
+  if (!_geo) return 0;
+  const { signals, signalTopY } = _geo;
+  let best = 0, bestD = Infinity;
+  for (let i = 0; i <= signals.length; i++) {
+    const by = i === 0              ? (signalTopY[0] ?? HEAD_H)
+             : i === signals.length ? (signalTopY[signals.length - 1] ?? HEAD_H) + SIG_H
+             : (signalTopY[i - 1] + SIG_H + signalTopY[i]) / 2;
+    const d = Math.abs(y - by);
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return best;
+}
+
+function getCellIdx(sigIdx, pixelX) {
+  if (!_geo || !workingSpec) return -1;
+  const sig = workingSpec.signal[sigIdx];
+  if (!sig?.wave) return -1;
+  const period = sig.period || 1, phase = sig.phase || 0;
+  const c = Math.floor(((pixelX - LABEL_W) / _geo.CELL_W - phase) / period);
+  return (c >= 0 && c < sig.wave.length) ? c : -1;
+}
+
+function applyCellState(sigIdx, cellIdx, state) {
+  const sig = workingSpec.signal[sigIdx];
+  if (!sig?.wave) return;
+  const isBus = c => c === '=' || /^[2-9]$/.test(c);
+  const chars = sig.wave.split('');
+  const oldChar = chars[cellIdx];
+  if (isBus(oldChar) && !isBus(state) && sig.data) {
+    const dataIdx = chars.slice(0, cellIdx).filter(isBus).length;
+    sig.data.splice(dataIdx, 1);
+    while (sig.data.length && !sig.data[sig.data.length - 1]) sig.data.pop();
+    if (!sig.data.length) delete sig.data;
+  }
+  chars[cellIdx] = state;
+  sig.wave = chars.join('');
+  syncEditorFromSpec();
+  render();
+}
+
+function applyBusCellState(sigIdx, cellIdx, colorChar, label) {
+  const sig = workingSpec.signal[sigIdx];
+  if (!sig?.wave) return;
+  const isBus = c => c === '=' || /^[2-9]$/.test(c);
+  const chars = sig.wave.split('');
+  const dataIdx = chars.slice(0, cellIdx).filter(isBus).length;
+  const wasAlreadyBus = isBus(chars[cellIdx]);
+  chars[cellIdx] = colorChar;
+  sig.wave = chars.join('');
+  if (!sig.data) sig.data = [];
+  if (wasAlreadyBus) {
+    while (sig.data.length <= dataIdx) sig.data.push('');
+    sig.data[dataIdx] = label;
+  } else {
+    sig.data.splice(dataIdx, 0, label);
+  }
+  while (sig.data.length && !sig.data[sig.data.length - 1]) sig.data.pop();
+  if (!sig.data.length) delete sig.data;
+  syncEditorFromSpec();
+  render();
+}
+
+function showCellEditor(sigIdx, pos) {
+  const cellIdx = getCellIdx(sigIdx, pos.x);
+  if (cellIdx < 0) return;
+  const ce = document.getElementById('cellEditor');
+  const cr = waveCanvas.getBoundingClientRect();
+  const ty = _geo.signalTopY[sigIdx];
+  let left = cr.left + pos.x;
+  let top  = cr.top  + ty + SIG_H + 4;
+  if (left + 220 > window.innerWidth)  left = window.innerWidth  - 226;
+  if (top  + 160 > window.innerHeight) top  = cr.top + ty - 164;
+  ce.style.left = left + 'px';
+  ce.style.top  = top  + 'px';
+  ce._sigIdx   = sigIdx;
+  ce._cellIdx  = cellIdx;
+
+  const isBus = c => c === '=' || /^[2-9]$/.test(c);
+  const sig = workingSpec.signal[sigIdx];
+  const ch = sig?.wave?.[cellIdx];
+  const busPanel = document.getElementById('busPanel');
+  if (isBus(ch)) {
+    const dataIdx = (sig.wave.split('').slice(0, cellIdx)).filter(isBus).length;
+    document.getElementById('busLabel').value = sig.data?.[dataIdx] || '';
+    document.getElementById('busColor').value = /^[2-9]$/.test(ch) ? ch : '=';
+    busPanel.style.display = 'flex';
+  } else {
+    busPanel.style.display = 'none';
+    document.getElementById('busLabel').value = '';
+    document.getElementById('busColor').value = '=';
+  }
+
+  ce.style.display = 'flex';
+  _cellEditorJustShown = true;
+  requestAnimationFrame(() => { _cellEditorJustShown = false; });
+}
+
+function hideCellEditor() {
+  const ce = document.getElementById('cellEditor');
+  if (!ce) return;
+  ce.style.display = 'none';
+  document.getElementById('busPanel').style.display = 'none';
+}
+
+function finishDrag(pos) {
+  if (!drag.active) return;
+  const wasClick = !drag.started;
+
+  if (drag.type === 'wave' && dragPhaseOverride !== null) {
+    const sig = workingSpec.signal[drag.idx];
+    if (sig) {
+      const p = dragPhaseOverride.phase;
+      if (p === 0) delete sig.phase; else sig.phase = p;
+    }
+    dragPhaseOverride = null;
+    syncEditorFromSpec();
+  } else if (drag.type === 'row' && drag.started) {
+    const toIdx = computeInsertionIdx(pos.y);
+    const fromIdx = drag.idx;
+    if (toIdx !== fromIdx && toIdx !== fromIdx + 1) {
+      const sigs = workingSpec.signal;
+      const [removed] = sigs.splice(fromIdx, 1);
+      sigs.splice(toIdx > fromIdx ? toIdx - 1 : toIdx, 0, removed);
+      syncEditorFromSpec();
+    }
+  } else if (drag.type === 'wave' && wasClick) {
+    const sigIdx = drag.idx;
+    drag.active = false; drag.type = null; drag.idx = -1; drag.started = false;
+    dragPhaseOverride = null;
+    waveCanvas.style.cursor = (activeTool === 'measure' || activeTool === 'constrain') ? 'crosshair' : '';
+    render();
+    showCellEditor(sigIdx, pos);
+    return;
+  }
+
+  drag.active = false; drag.type = null; drag.idx = -1; drag.started = false;
+  dragPhaseOverride = null;
+  waveCanvas.style.cursor = (activeTool === 'measure' || activeTool === 'constrain') ? 'crosshair' : '';
+  render();
+}
+
+// ─── Canvas events ─────────────────────────────────────────────────────────────
+waveCanvas.addEventListener('click', e => {
+  if (activeTool !== 'pointer' || !workingSpec || !_geo) return;
+  const pos = canvasPos(e);
+  const wave = hitTest(hitRegions.waves, pos.x, pos.y);
+  if (wave) showCellEditor(wave.idx, pos);
+});
+
+waveCanvas.addEventListener('mousedown', e => {
+  if (activeTool === 'measure') {
+    const pos = canvasPos(e);
+    measureAnchor = findNearestEdge(pos.x, pos.y) ?? pos.x;
+    e.preventDefault(); return;
+  }
+  if (activeTool === 'constrain') {
+    const pos = canvasPos(e);
+    const snap = snapToConstraintPoint(pos);
+    if (snap) { annotateAnchor = snap; renderCursor(); }
+    e.preventDefault(); return;
+  }
+  if (activeTool !== 'select') return;
+  if (!workingSpec || !_geo) return;
+  const pos = canvasPos(e);
+  const handle = hitTest(hitRegions.handles, pos.x, pos.y);
+  if (handle) {
+    Object.assign(drag, { active: true, type: 'row', idx: handle.idx,
+      startX: pos.x, startY: pos.y, curX: pos.x, curY: pos.y, started: false });
+    waveCanvas.style.cursor = 'grabbing';
+    e.preventDefault(); return;
+  }
+  const wave = hitTest(hitRegions.waves, pos.x, pos.y);
+  if (wave) {
+    Object.assign(drag, { active: true, type: 'wave', idx: wave.idx,
+      startX: pos.x, startY: pos.y, curX: pos.x, curY: pos.y,
+      origPhase: workingSpec.signal[wave.idx]?.phase ?? 0, started: false });
+    waveCanvas.style.cursor = 'ew-resize';
+    e.preventDefault(); return;
+  }
+});
+
+waveCanvas.addEventListener('mouseleave', () => {
+  if (activeTool === 'measure' || activeTool === 'constrain') { cursorPos = null; renderCursor(); }
+});
+
+waveCanvas.addEventListener('mousemove', e => {
+  const pos = canvasPos(e);
+  if (activeTool === 'measure') {
+    cursorPos = pos; waveCanvas.style.cursor = 'crosshair'; renderCursor(); return;
+  }
+  if (activeTool === 'constrain') {
+    cursorPos = pos; waveCanvas.style.cursor = 'crosshair'; renderCursor(); return;
+  }
+  if (!drag.active) {
+    if (activeTool === 'select') {
+      if      (hitTest(hitRegions.handles, pos.x, pos.y)) waveCanvas.style.cursor = 'grab';
+      else if (hitTest(hitRegions.waves,   pos.x, pos.y)) waveCanvas.style.cursor = 'ew-resize';
+      else waveCanvas.style.cursor = '';
+    } else {
+      waveCanvas.style.cursor = '';
+    }
+    return;
+  }
+  drag.curX = pos.x; drag.curY = pos.y;
+  if (!drag.started) {
+    const dx = pos.x - drag.startX, dy = pos.y - drag.startY;
+    if (Math.hypot(dx, dy) > 3) drag.started = true;
+    else return;
+  }
+  if (drag.type === 'wave' && _geo) {
+    const raw = drag.origPhase + (pos.x - drag.startX) / _geo.CELL_W;
+    dragPhaseOverride = { idx: drag.idx, phase: Math.round(raw * 20) / 20 };
+  }
+  render();
+});
+
+waveCanvas.addEventListener('mouseup', e => {
+  if (activeTool === 'measure') { measureAnchor = null; renderCursor(); return; }
+  if (activeTool === 'constrain') {
+    if (annotateAnchor) {
+      const pos = canvasPos(e);
+      const snap = snapToConstraintPoint(pos);
+      if (snap && (snap.signal !== annotateAnchor.signal || snap.cycle !== annotateAnchor.cycle || snap.anchor !== annotateAnchor.anchor)) {
+        openConstraintModal(annotateAnchor, snap);
+      }
+      annotateAnchor = null; renderCursor();
+    }
+    return;
+  }
+  finishDrag(canvasPos(e));
+});
+
+waveCanvas.addEventListener('dblclick', e => {
+  if (!workingSpec || !_geo) return;
+  const pos = canvasPos(e);
+  const lbl = hitTest(hitRegions.labels, pos.x, pos.y);
+  if (!lbl) return;
+  const sig = workingSpec.signal[lbl.idx];
+  if (!sig?.name) return;
+
+  const cr = waveCanvas.getBoundingClientRect();
+  const ty = _geo.signalTopY[lbl.idx];
+  const inp = document.createElement('input');
+  inp.type = 'text'; inp.value = sig.name;
+  Object.assign(inp.style, {
+    position: 'fixed',
+    left: (cr.left + HANDLE_W) + 'px', top: (cr.top + ty) + 'px',
+    width: (LABEL_W - HANDLE_W - 10) + 'px', height: SIG_H + 'px',
+    background: '#1a2235', border: '1px solid #4d8ef0', color: '#d4d8e2',
+    fontFamily: '"Roboto Mono", monospace', fontSize: '11px', fontWeight: '500',
+    padding: '0 6px', outline: 'none', zIndex: '1000', borderRadius: '2px',
+    textAlign: 'right', boxSizing: 'border-box',
+  });
+  document.body.appendChild(inp);
+  inp.focus(); inp.select();
+
+  const commit = () => {
+    const name = inp.value.trim();
+    if (name && name !== sig.name) {
+      if (workingSpec.node) Object.values(workingSpec.node).forEach(nd => {
+        if (nd.signal === sig.name) nd.signal = name;
+      });
+      sig.name = name;
+      syncEditorFromSpec(); render();
+    }
+    inp.remove();
+  };
+  inp.addEventListener('blur', commit);
+  inp.addEventListener('keydown', ev => {
+    if (ev.key === 'Enter') commit();
+    else if (ev.key === 'Escape') inp.remove();
+  });
+});
+
+// ─── Pane divider ──────────────────────────────────────────────────────────────
+let paneResizing = false;
+divider.addEventListener('mousedown', e => { paneResizing = true; e.preventDefault(); });
+document.addEventListener('mousemove', e => {
+  if (paneResizing) edPane.style.width = Math.max(180, Math.min(640, e.clientX)) + 'px';
+});
+document.addEventListener('mouseup', e => {
+  paneResizing = false;
+  if (drag.active) finishDrag({ x: drag.curX, y: drag.curY });
+});
+
+// ─── Source textarea ───────────────────────────────────────────────────────────
+sourceEl.addEventListener('input', () => {
+  localStorage.setItem('wavetool_source', sourceEl.value);
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(() => { workingSpec = null; render(); }, 500);
+});
+
+// ─── Toolbar ───────────────────────────────────────────────────────────────────
+document.getElementById('btnPointer') .addEventListener('click', () => setTool('pointer'));
+document.getElementById('btnSelect')  .addEventListener('click', () => setTool('select'));
+document.getElementById('btnMeasure') .addEventListener('click', () => setTool('measure'));
+document.getElementById('btnConstrain').addEventListener('click', () => setTool('constrain'));
+document.getElementById('btnZoomOut')    .addEventListener('click', zoomOut);
+document.getElementById('btnZoomIn')     .addEventListener('click', zoomIn);
+document.getElementById('btnToggleJSON') .addEventListener('click', toggleJSON);
+document.getElementById('btnExport')     .addEventListener('click', openExportModal);
+document.getElementById('expCancel')     .addEventListener('click', closeExportModal);
+document.getElementById('expSVG')        .addEventListener('click', doExportSVG);
+document.getElementById('expPNG')        .addEventListener('click', doExportPNG);
+document.getElementById('exportModal')   .addEventListener('click', e => { if (e.target === document.getElementById('exportModal')) closeExportModal(); });
+document.getElementById('btnRender')     .addEventListener('click', () => { workingSpec = null; render(); });
+
+document.addEventListener('keydown', e => {
+  const tag = e.target.tagName;
+  const inInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+  if (e.key === 'Escape') {
+    if (activeTool === 'constrain' && annotateAnchor) { annotateAnchor = null; renderCursor(); }
+    else if (activeTool === 'measure' && measureAnchor) { measureAnchor = null; renderCursor(); }
+    else if (activeTool !== 'pointer') setTool('pointer');
+  }
+  if (!inInput && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (e.key === '1') setTool('pointer');
+    else if (e.key === '2') setTool('select');
+    else if (e.key === '3') setTool('measure');
+    else if (e.key === '4') setTool('constrain');
+    else if (e.key === '+' || e.key === '=') zoomIn();
+    else if (e.key === '-') zoomOut();
+  }
+});
+
+// ─── Add Signal modal ──────────────────────────────────────────────────────────
+function openAddSignalModal() {
+  document.getElementById('asmName').value = '';
+  document.getElementById('asmType').value = 'digital';
+  addSignalModal.style.display = 'flex';
+  setTimeout(() => document.getElementById('asmName').focus(), 40);
+}
+function closeAddSignalModal() { addSignalModal.style.display = 'none'; }
+
+function submitAddSignal() {
+  const name = document.getElementById('asmName').value.trim();
+  const type = document.getElementById('asmType').value;
+  if (!name && type !== 'spacer') return;
+  if (!workingSpec) workingSpec = { signal: [] };
+  const len = Math.max(_geo?.maxLen ?? 0, 8);
+  let sig;
+  switch (type) {
+    case 'clock_p': sig = { name, wave: 'p'.repeat(len) }; break;
+    case 'clock_n': sig = { name, wave: 'n'.repeat(len) }; break;
+    default:        sig = { name, wave: '0'.repeat(len) };
+  }
+  workingSpec.signal = workingSpec.signal || [];
+  workingSpec.signal.push(sig);
+  syncEditorFromSpec();
+  render();
+  closeAddSignalModal();
+}
+
+document.getElementById('btnAddSignal').addEventListener('click', openAddSignalModal);
+document.getElementById('btnConfig').addEventListener('click', openConfigModal);
+document.getElementById('asmCancel')   .addEventListener('click', closeAddSignalModal);
+document.getElementById('asmAdd')      .addEventListener('click', submitAddSignal);
+addSignalModal.addEventListener('click', e => { if (e.target === addSignalModal) closeAddSignalModal(); });
+document.getElementById('asmName').addEventListener('keydown', e => {
+  if (e.key === 'Enter') submitAddSignal();
+  else if (e.key === 'Escape') closeAddSignalModal();
+});
+
+// ─── Constraint modal ─────────────────────────────────────────────────────────
+document.getElementById('ctPreset').addEventListener('change', e => {
+  if (e.target.value) document.getElementById('ctLabel').value = e.target.value;
+});
+document.getElementById('ctAdd').addEventListener('click', () => {
+  if (!pendingConstraint) return;
+  const label = document.getElementById('ctLabel').value.trim();
+  if (pendingConstraint.editIdx !== undefined) {
+    const str = workingSpec.edge[pendingConstraint.editIdx];
+    const prefix = str.match(/^[A-Za-z0-9]+\s*[→>~-]+\s*[A-Za-z0-9]+/)?.[0];
+    if (prefix) workingSpec.edge[pendingConstraint.editIdx] = label ? `${prefix} ${label}` : prefix;
+    syncEditorFromSpec();
+    render();
+    closeConstraintModal();
+  } else {
+    addConstraint(pendingConstraint.anchor, pendingConstraint.target, label);
+    closeConstraintModal();
+  }
+});
+document.getElementById('ctCancel').addEventListener('click', closeConstraintModal);
+document.getElementById('constraintModal').addEventListener('click', e => {
+  if (e.target === document.getElementById('constraintModal')) closeConstraintModal();
+});
+document.getElementById('ctLabel').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('ctAdd').click();
+  else if (e.key === 'Escape') closeConstraintModal();
+});
+
+// ─── Signal context menu ───────────────────────────────────────────────────────
+let ctxSignalIdx = -1;
+let ctxEdgeIdx = -1;
+waveCanvas.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  if (!workingSpec || !_geo) return;
+  const pos = canvasPos(e);
+
+  const edgeIdx = hitTestEdge(pos);
+  if (edgeIdx >= 0) {
+    ctxSignalIdx = -1; ctxEdgeIdx = edgeIdx;
+    document.getElementById('ctxSignalProps').style.display      = 'none';
+    document.getElementById('ctxDelete').style.display           = 'none';
+    document.getElementById('ctxEditConstraint').style.display   = 'block';
+    document.getElementById('ctxDeleteConstraint').style.display = 'block';
+    ctxMenu.style.left = e.clientX + 'px'; ctxMenu.style.top = e.clientY + 'px';
+    ctxMenu.style.display = 'block'; return;
+  }
+
+  const lbl = hitTest(hitRegions.labels, pos.x, pos.y) || hitTest(hitRegions.handles, pos.x, pos.y);
+  if (!lbl) { ctxMenu.style.display = 'none'; return; }
+  ctxSignalIdx = lbl.idx; ctxEdgeIdx = -1;
+  const sigHasName = !!workingSpec.signal[lbl.idx]?.name;
+  document.getElementById('ctxSignalProps').style.display      = sigHasName ? 'block' : 'none';
+  document.getElementById('ctxDelete').style.display           = 'block';
+  document.getElementById('ctxEditConstraint').style.display   = 'none';
+  document.getElementById('ctxDeleteConstraint').style.display = 'none';
+  ctxMenu.style.left = e.clientX + 'px'; ctxMenu.style.top = e.clientY + 'px';
+  ctxMenu.style.display = 'block';
+});
+
+document.getElementById('ctxSignalProps').addEventListener('click', () => {
+  if (ctxSignalIdx < 0) return;
+  const idx = ctxSignalIdx;
+  ctxSignalIdx = -1; ctxMenu.style.display = 'none';
+  openSigPropsModal(idx);
+});
+
+document.getElementById('ctxDelete').addEventListener('click', () => {
+  if (ctxSignalIdx < 0 || !workingSpec) return;
+  workingSpec.signal.splice(ctxSignalIdx, 1);
+  ctxSignalIdx = -1;
+  ctxMenu.style.display = 'none';
+  syncEditorFromSpec();
+  render();
+});
+
+document.getElementById('ctxEditConstraint').addEventListener('click', () => {
+  if (ctxEdgeIdx < 0 || !workingSpec) return;
+  ctxMenu.style.display = 'none';
+  openEditConstraintModal(ctxEdgeIdx);
+  ctxEdgeIdx = -1;
+});
+
+document.getElementById('ctxDeleteConstraint').addEventListener('click', () => {
+  if (ctxEdgeIdx < 0 || !workingSpec) return;
+  ctxMenu.style.display = 'none';
+  deleteConstraint(ctxEdgeIdx);
+  ctxEdgeIdx = -1;
+});
+
+document.getElementById('cellEditor').addEventListener('click', e => {
+  const btn = e.target.closest('.cell-btn');
+  if (!btn) return;
+  const ce = e.currentTarget;
+  if (btn.dataset.state === '=') {
+    const bp = document.getElementById('busPanel');
+    bp.style.display = bp.style.display === 'flex' ? 'none' : 'flex';
+    if (bp.style.display === 'flex') document.getElementById('busLabel').focus();
+    return;
+  }
+  applyCellState(ce._sigIdx, ce._cellIdx, btn.dataset.state);
+  hideCellEditor();
+});
+
+document.getElementById('busApply').addEventListener('click', () => {
+  const ce = document.getElementById('cellEditor');
+  const label = document.getElementById('busLabel').value.trim();
+  const colorChar = document.getElementById('busColor').value;
+  applyBusCellState(ce._sigIdx, ce._cellIdx, colorChar, label);
+  hideCellEditor();
+});
+
+document.getElementById('busLabel').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('busApply').click();
+  else if (e.key === 'Escape') hideCellEditor();
+});
+
+document.addEventListener('click', e => {
+  if (!ctxMenu.contains(e.target)) ctxMenu.style.display = 'none';
+  const ce = document.getElementById('cellEditor');
+  if (!_cellEditorJustShown && !ce.contains(e.target)) hideCellEditor();
+});
+
+// ─── Config modal ─────────────────────────────────────────────────────────────
+function openConfigModal() {
+  if (!workingSpec) return;
+  const t = workingSpec.timing || {};
+  const c = workingSpec.config || {};
+  document.getElementById('cfgUnit').value   = t.unit   || 'ns';
+  document.getElementById('cfgPeriod').value = t.period != null ? t.period : '';
+  document.getElementById('cfgTrise').value  = t.trise  != null ? t.trise  : '';
+  document.getElementById('cfgHscale').value = c.hscale != null ? c.hscale : '';
+  document.getElementById('configModal').style.display = 'flex';
+  setTimeout(() => document.getElementById('cfgPeriod').focus(), 40);
+}
+function closeConfigModal() { document.getElementById('configModal').style.display = 'none'; }
+function applyConfig() {
+  if (!workingSpec) return;
+  const unit   = document.getElementById('cfgUnit').value;
+  const period = parseFloat(document.getElementById('cfgPeriod').value);
+  const trise  = parseFloat(document.getElementById('cfgTrise').value);
+  const hscale = parseFloat(document.getElementById('cfgHscale').value);
+  if (period > 0) {
+    if (!workingSpec.timing) workingSpec.timing = {};
+    workingSpec.timing.unit   = unit;
+    workingSpec.timing.period = period;
+    if (trise > 0) workingSpec.timing.trise = trise;
+    else delete workingSpec.timing.trise;
+  } else {
+    delete workingSpec.timing;
+  }
+  if (hscale > 0) {
+    if (!workingSpec.config) workingSpec.config = {};
+    workingSpec.config.hscale = hscale;
+  } else {
+    delete workingSpec.config?.hscale;
+    if (workingSpec.config && !Object.keys(workingSpec.config).length) delete workingSpec.config;
+  }
+  syncEditorFromSpec();
+  render();
+  closeConfigModal();
+}
+document.getElementById('cfgApply').addEventListener('click', applyConfig);
+document.getElementById('cfgCancel').addEventListener('click', closeConfigModal);
+document.getElementById('configModal').addEventListener('click', e => { if (e.target === document.getElementById('configModal')) closeConfigModal(); });
+['cfgPeriod','cfgTrise','cfgHscale'].forEach(id => {
+  document.getElementById(id).addEventListener('keydown', e => {
+    if (e.key === 'Enter') applyConfig();
+    else if (e.key === 'Escape') closeConfigModal();
+  });
+});
+
+// ─── Signal properties modal ───────────────────────────────────────────────────
+let _sigPropsIdx = -1;
+function openSigPropsModal(sigIdx) {
+  if (!workingSpec) return;
+  const sig = workingSpec.signal[sigIdx];
+  if (!sig?.name) return;
+  _sigPropsIdx = sigIdx;
+  document.getElementById('spName').value   = sig.name;
+  document.getElementById('spPeriod').value = sig.period != null ? sig.period : '';
+  document.getElementById('spPhase').value  = sig.phase  != null ? sig.phase  : '';
+  document.getElementById('sigPropsModal').style.display = 'flex';
+  setTimeout(() => document.getElementById('spName').focus(), 40);
+}
+function closeSigPropsModal() { document.getElementById('sigPropsModal').style.display = 'none'; _sigPropsIdx = -1; }
+function applySigProps() {
+  if (_sigPropsIdx < 0 || !workingSpec) return;
+  const sig = workingSpec.signal[_sigPropsIdx];
+  if (!sig) return;
+  const name   = document.getElementById('spName').value.trim();
+  const period = parseFloat(document.getElementById('spPeriod').value);
+  const phase  = parseFloat(document.getElementById('spPhase').value);
+  if (name && name !== sig.name) {
+    if (workingSpec.node) Object.values(workingSpec.node).forEach(nd => { if (nd.signal === sig.name) nd.signal = name; });
+    sig.name = name;
+  }
+  if (period > 0) sig.period = period; else delete sig.period;
+  if (phase)      sig.phase  = phase;  else delete sig.phase;
+  syncEditorFromSpec();
+  render();
+  closeSigPropsModal();
+}
+document.getElementById('spApply').addEventListener('click', applySigProps);
+document.getElementById('spCancel').addEventListener('click', closeSigPropsModal);
+document.getElementById('sigPropsModal').addEventListener('click', e => { if (e.target === document.getElementById('sigPropsModal')) closeSigPropsModal(); });
+['spName','spPeriod','spPhase'].forEach(id => {
+  document.getElementById(id).addEventListener('keydown', e => {
+    if (e.key === 'Enter') applySigProps();
+    else if (e.key === 'Escape') closeSigPropsModal();
+  });
+});
+
+// ─── Boot ──────────────────────────────────────────────────────────────────────
+if (localStorage.getItem('wavetool_json_visible') === '1') {
+  edPane.style.display  = 'flex';
+  divider.style.display = 'block';
+  document.getElementById('btnToggleJSON').classList.add('tool-active');
+}
+render();
+
+</script>
+</body>
+</html>
