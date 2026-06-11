@@ -23,11 +23,14 @@
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
+  html { height: 100%; overflow: hidden; }
+
   body {
     background: var(--bg);
     color: var(--text);
     font-family: 'Inter', sans-serif;
-    height: 100vh;
+    position: fixed;
+    inset: 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -73,7 +76,7 @@
   button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
   button.primary:hover { background: var(--accent-h); }
 
-  .main { display: flex; flex: 1; overflow: hidden; }
+  .main { display: flex; flex: 1; overflow: hidden; min-height: 0; }
 
   .editor-pane {
     width: 340px;
@@ -148,10 +151,34 @@
 
   .canvas-pane {
     flex: 1;
-    overflow: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
     padding: 20px;
     background: var(--bg);
+    min-width: 0;
+    min-height: 0;
+    align-self: stretch;
   }
+
+  #diagramScrollX {
+    overflow-x: auto;
+    display: block;
+    line-height: 0;
+  }
+
+  #diagramScrollX::-webkit-scrollbar { height: 8px; }
+  #diagramScrollX::-webkit-scrollbar-track { background: #1e2330; border-radius: 4px; }
+  #diagramScrollX::-webkit-scrollbar-thumb { background: #3a4258; border-radius: 4px; }
+  #diagramScrollX::-webkit-scrollbar-thumb:hover { background: #4d9ef7; }
+
+  .canvas-pane::-webkit-scrollbar { width: 8px; }
+  .canvas-pane::-webkit-scrollbar-track { background: #1e2330; }
+  .canvas-pane::-webkit-scrollbar-thumb { background: #3a4258; border-radius: 4px; }
+  .canvas-pane::-webkit-scrollbar-thumb:hover { background: #4d9ef7; }
+
+  .editor-pane textarea::-webkit-scrollbar { width: 6px; }
+  .editor-pane textarea::-webkit-scrollbar-track { background: transparent; }
+  .editor-pane textarea::-webkit-scrollbar-thumb { background: #3a4258; border-radius: 3px; }
 
   canvas {
     display: block;
@@ -173,8 +200,47 @@
 
   button.tool-active { background: var(--accent) !important; color: #fff !important; border-color: var(--accent) !important; }
 
-  .canvas-wrap { position: relative; display: inline-block; line-height: 0; }
+  .canvas-wrap { position: relative; display: block; line-height: 0; }
   #cursorCanvas { position: absolute; top: 0; left: 0; pointer-events: none; display: block; border-radius: 5px; }
+  #diagramOuter { display: inline-block; line-height: 0; }
+  #diagramResizeHandle {
+    width: 100%; height: 8px;
+    cursor: ns-resize;
+    background: rgba(255,255,255,0.04);
+    border-radius: 0 0 5px 5px;
+    display: flex; align-items: center; justify-content: center;
+    line-height: normal; box-sizing: border-box;
+  }
+  #diagramResizeHandle::after {
+    content: ''; width: 36px; height: 3px;
+    background: rgba(255,255,255,0.12); border-radius: 2px;
+  }
+  #diagramResizeHandle:hover, #diagramResizeHandle.active {
+    background: rgba(77,158,247,0.12);
+  }
+  #diagramResizeHandle:hover::after, #diagramResizeHandle.active::after {
+    background: rgba(77,158,247,0.45);
+  }
+  #diagramRightHandle {
+    position: absolute;
+    right: 0; top: 0;
+    width: 8px; height: 100%;
+    cursor: ew-resize;
+    background: rgba(255,255,255,0.04);
+    border-radius: 0 5px 5px 0;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 10; box-sizing: border-box;
+  }
+  #diagramRightHandle::after {
+    content: ''; width: 3px; height: 36px;
+    background: rgba(255,255,255,0.12); border-radius: 2px;
+  }
+  #diagramRightHandle:hover, #diagramRightHandle.active {
+    background: rgba(77,158,247,0.12);
+  }
+  #diagramRightHandle:hover::after, #diagramRightHandle.active::after {
+    background: rgba(77,158,247,0.45);
+  }
 
   .modal-backdrop {
     position: fixed; inset: 0;
@@ -223,6 +289,18 @@
     flex: 1 1 calc(25% - 4px); min-width: 44px;
     padding: 4px 6px; font-size: 11px; text-align: center;
   }
+  #cellEditor .cell-div { width: 100%; height: 1px; background: var(--border); margin: 3px 0 1px; }
+  #cellEditor .cell-op {
+    flex: 1 1 calc(33.33% - 4px);
+    padding: 4px 2px; font-size: 10.5px; text-align: center;
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--muted); font-family: 'Inter', sans-serif; font-weight: 500;
+    border-radius: 3px; cursor: pointer; white-space: nowrap;
+    transition: background 0.1s, color 0.1s;
+  }
+  #cellEditor .cell-op:hover { background: var(--border); color: var(--text); }
+  #cellEditor .cell-op.del { color: #c06060; }
+  #cellEditor .cell-op.del:hover { background: #3a1818; color: var(--danger); }
   #busPanel {
     width: 100%; flex-direction: column; gap: 6px;
     margin-top: 5px; padding-top: 7px;
@@ -242,32 +320,101 @@
   .bus-field input:focus, .bus-field select:focus {
     outline: none; border-color: var(--accent);
   }
+
+  /* ── Add Signal variable rows ────────────────────────── */
+  #asmVarRows { display: none; flex-direction: column; gap: 6px; padding: 2px 0 2px 2px; border-left: 2px solid var(--border); }
+  .asm-var-row { display: flex; align-items: center; gap: 7px; }
+  .asm-var-name { font-family: 'Roboto Mono', monospace; font-size: 11px; color: var(--accent); min-width: 52px; }
+  .asm-var-label { font-size: 10px; color: var(--muted); }
+  .asm-var-from, .asm-var-to { width: 54px; font-size: 11px; padding: 4px 6px; background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 4px; font-family: 'Inter', sans-serif; }
+  .asm-var-from:focus, .asm-var-to:focus { outline: none; border-color: var(--accent); }
+  .asm-var-from.asm-var-invalid, .asm-var-to.asm-var-invalid { border-color: var(--danger) !important; box-shadow: 0 0 0 1px rgba(224,92,92,0.35); }
+
+  /* ── Menu bar ─────────────────────────────────────────── */
+  .menubar { display: flex; align-items: stretch; margin-left: 6px; }
+  .menu-root { position: relative; }
+  .menu-trigger {
+    background: none; border: none;
+    color: var(--label);
+    font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 500;
+    padding: 0 10px; height: 100%; border-radius: 0;
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s;
+  }
+  .menu-trigger:hover, .menu-root.open > .menu-trigger {
+    background: var(--border); color: var(--text);
+  }
+  .menu-drop {
+    position: absolute; top: 100%; left: 0;
+    min-width: 185px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 5px; box-shadow: 0 4px 16px rgba(0,0,0,0.45);
+    z-index: 400; display: none; padding: 3px 0;
+  }
+  .menu-root.open > .menu-drop { display: block; }
+  .menu-item {
+    padding: 6px 14px; font-size: 11.5px; cursor: pointer;
+    color: var(--label);
+    display: flex; align-items: center; justify-content: space-between; gap: 20px;
+    white-space: nowrap; user-select: none;
+  }
+  .menu-item:hover { background: var(--border); color: var(--text); }
+  .menu-item.dis { opacity: 0.35; pointer-events: none; }
+  .menu-item.danger:hover { background: #3a1818; color: var(--danger); }
+  .menu-item.checked { color: var(--accent); }
+  .menu-item.checked:hover { color: var(--text); }
+  .menu-kbd { font-size: 10px; color: var(--muted); font-family: 'Roboto Mono', monospace; }
+  .menu-div { height: 1px; background: var(--border); margin: 3px 0; }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>Wave<span>Edit</span></h1>
-  <div class="sep"></div>
-  <span class="sub">Timing Diagram Editor</span>
-  <div class="toolbar">
+  <h1>Wave <span>Editor</span></h1>
+
+  <div class="menubar">
+    <div class="menu-root" id="menuFile">
+      <button class="menu-trigger">File</button>
+      <div class="menu-drop">
+        <div class="menu-item" id="miOpen">↥ Open…</div>
+        <div class="menu-item" id="miSave">↧ Save</div>
+      </div>
+    </div>
+    <div class="menu-root" id="menuEdit">
+      <button class="menu-trigger">Edit</button>
+      <div class="menu-drop">
+        <div class="menu-item dis" id="miUndo">↩ Undo<span class="menu-kbd">Ctrl+Z</span></div>
+        <div class="menu-item dis" id="miRedo">↪ Redo<span class="menu-kbd">Ctrl+Y</span></div>
+        <div class="menu-div"></div>
+        <div class="menu-item" id="miConfig">⚙ Config</div>
+        <div class="menu-div"></div>
+        <div class="menu-item danger" id="miClear">⌫ Clear…</div>
+      </div>
+    </div>
+    <div class="menu-root" id="menuView">
+      <button class="menu-trigger">View</button>
+      <div class="menu-drop">
+        <div class="menu-item" id="miZoomIn">+ Zoom In<span class="menu-kbd">+</span></div>
+        <div class="menu-item" id="miZoomOut">− Zoom Out<span class="menu-kbd">−</span></div>
+        <div class="menu-item" id="miZoomFit">Zoom to Fit<span class="menu-kbd">F</span></div>
+        <div class="menu-div"></div>
+        <div class="menu-item" id="miToggleJSON">{ } JSON Editor</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toolbar" style="margin-left:auto">
     <button id="btnPointer" class="tool-active" title="Pointer — click cells to edit  [1]">↖ Pointer</button>
     <button id="btnSelect" title="Select — drag to reorder signals or shift phase  [2]">⇄ Select</button>
     <button id="btnMeasure" title="Measure time at cursor  [3]">⏱ Measure</button>
     <button id="btnConstrain" title="Drag between signal edges to add a timing constraint  [4]">⊢ Constrain</button>
     <div class="sep"></div>
-    <button id="btnAddSignal">+ Signal</button>
-    <button id="btnConfig">⚙ Config</button>
+    <button id="btnAddSignal" title="Add signal  [A]">+ Signal</button>
     <div class="sep"></div>
-    <button id="btnZoomOut" title="Zoom out  [−]">− Zoom</button>
-    <button id="btnZoomIn"  title="Zoom in  [+]">+ Zoom</button>
-    <div class="sep"></div>
-    <button id="btnToggleJSON" title="Show/hide JSON editor">{ }</button>
-    <button id="btnExport">⬇ Export</button>
-    <div class="sep"></div>
-    <button id="btnRender" class="primary">▶ Render</button>
+    <button id="btnExport" class="primary">Export</button>
   </div>
 </header>
+<input type="file" id="fileOpenInput" accept=".json" style="display:none">
 
 <div class="main">
   <div class="editor-pane" id="editorPane" style="display:none">
@@ -296,10 +443,16 @@
 
   <div class="divider" id="divider" style="display:none"></div>
 
-  <div class="canvas-pane">
-    <div class="canvas-wrap">
-      <canvas id="waveCanvas"></canvas>
-      <canvas id="cursorCanvas"></canvas>
+  <div class="canvas-pane" id="canvasPane">
+    <div id="diagramScrollX">
+    <div id="diagramOuter">
+      <div class="canvas-wrap">
+        <canvas id="waveCanvas"></canvas>
+        <canvas id="cursorCanvas"></canvas>
+        <div id="diagramRightHandle"></div>
+      </div>
+      <div id="diagramResizeHandle"></div>
+    </div>
     </div>
   </div>
 </div>
@@ -309,14 +462,27 @@
     <div class="modal-hdr">Add Signal</div>
     <div class="modal-body">
       <label>Name
-        <input id="asmName" type="text" placeholder="e.g. CLK, DATA_BUS, CS_N">
+        <input id="asmName" type="text" placeholder="e.g. CLK, SDO{i}, adc{i}_miso{j}">
       </label>
+      <div id="asmVarRows"></div>
       <label>Type
         <select id="asmType">
           <option value="clock_p">Clock — rising edge (p)</option>
           <option value="clock_n">Clock — falling edge (n)</option>
           <option value="digital" selected>Digital (std_logic)</option>
+          <option value="group">Signal Group</option>
         </select>
+      </label>
+      <label id="asmPeriodRow" style="display:none">Period <span style="font-size:10px;color:var(--muted)">(e.g. 10 ns — uses diagram unit if no unit given)</span>
+        <input id="asmPeriod" type="text" placeholder="e.g. 10 ns">
+      </label>
+      <label id="asmEdgeRow" style="display:none; flex-direction:row; align-items:center; gap:8px">
+        <input type="checkbox" id="asmEdge" style="width:auto; accent-color:var(--accent)">
+        Edge markers
+      </label>
+      <label id="asmDDRRow" style="display:none; flex-direction:row; align-items:center; gap:8px; padding-left:20px">
+        <input type="checkbox" id="asmDDR" style="width:auto; accent-color:var(--accent)">
+        DDR (both edges)
       </label>
     </div>
     <div class="modal-foot">
@@ -345,6 +511,17 @@
       <label>Label
         <input id="ctLabel" type="text" placeholder="e.g.  tSU ≥ 2ns">
       </label>
+      <div id="ctValueRow">
+        <label>Value <small style="font-weight:400;color:#8a94aa">(adjusts phase to match)</small>
+          <input id="ctValue" type="text" placeholder="e.g.  5.6 ns">
+        </label>
+        <div style="font-size:10px;color:#8a94aa;margin-top:2px">Leave blank to annotate without moving signals</div>
+      </div>
+      <div id="ctShowValueRow">
+        <label style="flex-direction:row;align-items:center;gap:8px;margin-top:6px">
+          <input type="checkbox" id="ctShowValue"> Show value instead of name
+        </label>
+      </div>
     </div>
     <div class="modal-foot">
       <button id="ctCancel">Cancel</button>
@@ -355,9 +532,16 @@
 
 <div id="ctxMenu" class="ctx-menu" style="display:none">
   <div id="ctxSignalProps"       class="ctx-item"        style="display:none">Signal Properties…</div>
-  <div id="ctxDelete"            class="ctx-item danger">Delete Signal</div>
+  <div id="ctxDuplicate"         class="ctx-item"        style="display:none">Duplicate Signal</div>
+  <div id="ctxDelete"            class="ctx-item danger" style="display:none">Delete Signal</div>
+  <div id="ctxGroupRename"       class="ctx-item"        style="display:none">Rename Group…</div>
+  <div id="ctxGroupClock"        class="ctx-item"        style="display:none">Clock Domain…</div>
+  <div id="ctxUngroup"           class="ctx-item"        style="display:none">Ungroup</div>
+  <div id="ctxGroupDelete"       class="ctx-item danger" style="display:none">Delete Group &amp; Signals</div>
   <div id="ctxEditConstraint"    class="ctx-item"        style="display:none">Edit Constraint…</div>
   <div id="ctxDeleteConstraint"  class="ctx-item danger" style="display:none">Delete Constraint</div>
+  <div id="ctxEditMeasure"       class="ctx-item"        style="display:none">Edit Label…</div>
+  <div id="ctxDeleteMeasure"     class="ctx-item danger" style="display:none">Delete Measurement</div>
 </div>
 
 <div id="cellEditor" style="display:none">
@@ -370,6 +554,10 @@
   <button class="cell-btn" data-state="n">n CLK↓</button>
   <button class="cell-btn" data-state="=">=  Bus ▾</button>
   <button class="cell-btn" data-state=".">. cont</button>
+  <div class="cell-div"></div>
+  <button class="cell-op" id="ceInsertBefore">← Insert</button>
+  <button class="cell-op del" id="ceDelete">✕ Delete</button>
+  <button class="cell-op" id="ceInsertAfter">Insert →</button>
   <div id="busPanel" style="display:none">
     <label class="bus-field">Label
       <input id="busLabel" type="text" placeholder="e.g. DATA, ADDR">
@@ -391,11 +579,39 @@
   </div>
 </div>
 
+<!-- ── Group clock domain modal ─────────────────────────────────── -->
+<div id="groupClockModal" class="modal-backdrop" style="display:none">
+  <div class="modal" style="min-width:280px">
+    <div class="modal-hdr">Clock Domain</div>
+    <div class="modal-body">
+      <label>Clock label <span style="font-size:10px;color:var(--muted)">(e.g. 25 MHz — leave blank to remove)</span>
+        <input id="gclkLabel" type="text" placeholder="e.g. 25 MHz">
+      </label>
+      <label>Period <span style="font-size:10px;color:var(--muted)">(e.g. 10 ns — uses diagram unit if no unit given)</span>
+        <input id="gclkPeriod" type="text" placeholder="e.g. 10 ns">
+      </label>
+      <label>Color
+        <input id="gclkColor" type="color" value="#e06424">
+      </label>
+      <label style="flex-direction:row;align-items:center;gap:8px;cursor:pointer">
+        <input id="gclkLines" type="checkbox" checked> Show grid lines
+      </label>
+    </div>
+    <div class="modal-foot">
+      <button id="gclkCancel">Cancel</button>
+      <button id="gclkApply" class="primary">Apply</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Config modal ──────────────────────────────────────────────── -->
 <div id="configModal" class="modal-backdrop" style="display:none">
   <div class="modal" style="min-width:320px">
     <div class="modal-hdr">Diagram Config</div>
     <div class="modal-body">
+      <label>Title
+        <input id="cfgTitle" type="text" placeholder="e.g. SPI Read Transaction">
+      </label>
       <label>Time unit
         <select id="cfgUnit">
           <option value="fs">fs</option>
@@ -406,8 +622,8 @@
           <option value="s">s</option>
         </select>
       </label>
-      <label>Clock period <span style="font-size:10px;color:var(--muted)">(in chosen unit)</span>
-        <input id="cfgPeriod" type="number" min="0" step="any" placeholder="e.g. 10">
+      <label>Resolution <span style="font-size:10px;color:var(--muted)">(x-axis grid step, in chosen unit — e.g. 100 for 100 ps)</span>
+        <input id="cfgPeriod" type="number" min="0" step="any" placeholder="e.g. 100">
       </label>
       <label>Rise / fall time <span style="font-size:10px;color:var(--muted)">(trise, same unit — scales bus chamfer)</span>
         <input id="cfgTrise" type="number" min="0" step="any" placeholder="e.g. 1">
@@ -431,11 +647,19 @@
       <label>Name
         <input id="spName" type="text">
       </label>
-      <label>Period multiplier <span style="font-size:10px;color:var(--muted)">(cell width × this value)</span>
-        <input id="spPeriod" type="number" min="0.25" step="0.25" placeholder="1">
+      <label>Period <span style="font-size:10px;color:var(--muted)">(e.g. 10 ns — uses diagram unit if no unit given)</span>
+        <input id="spPeriod" type="text" placeholder="e.g. 10 ns">
       </label>
       <label>Phase offset <span style="font-size:10px;color:var(--muted)">(cells, can be fractional)</span>
         <input id="spPhase" type="number" step="0.05" placeholder="0">
+      </label>
+      <label id="spEdgeRow" style="display:none; flex-direction:row; align-items:center; gap:8px">
+        <input type="checkbox" id="spEdge" style="width:auto; accent-color:var(--accent)">
+        Edge markers
+      </label>
+      <label id="spDDRRow" style="display:none; flex-direction:row; align-items:center; gap:8px; padding-left:20px">
+        <input type="checkbox" id="spDDR" style="width:auto; accent-color:var(--accent)">
+        DDR (both edges)
       </label>
     </div>
     <div class="modal-foot">
@@ -468,7 +692,23 @@
     <div class="modal-foot">
       <button id="expCancel">Cancel</button>
       <button id="expSVG">Save SVG</button>
+      <button id="expPreview">Preview PNG</button>
       <button id="expPNG" class="primary">Save PNG</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Dirty-confirm modal ─────────────────────────────────────────── -->
+<div id="dirtyConfirmModal" class="modal-backdrop" style="display:none">
+  <div class="modal" style="min-width:320px">
+    <div class="modal-hdr">Unsaved Changes</div>
+    <div class="modal-body">
+      <div style="font-size:12px;color:var(--label);line-height:1.6">You have unsaved changes. Save before opening the new file?</div>
+    </div>
+    <div class="modal-foot" style="gap:8px">
+      <button id="dcCancel">Cancel</button>
+      <button id="dcDiscard">Discard &amp; Open</button>
+      <button id="dcSave" class="primary">Save &amp; Open</button>
     </div>
   </div>
 </div>
@@ -476,7 +716,7 @@
 <script>
 
 // ───── js/constants.js ─────
-const LABEL_W = 112, SIG_H = 38, HEAD_H = 34, FOOT_H = 8, PAD_R = 28, DELAY_GAP = 30;
+const LABEL_W = 112, SIG_H = 38, HEAD_H = 44, FOOT_H = 8, PAD_R = 28, DELAY_GAP = 30;
 const HANDLE_W = 14;
 
 const THEMES = {
@@ -485,7 +725,7 @@ const THEMES = {
     label: '#8a94aa', title: '#dce2f0',
     clk:   '#4d9ef7', high:  '#4d9ef7', low: '#4d9ef7',
     data:  '#4d9ef7', bus:   '#4d9ef7',
-    x: '#e06060', z: '#4d9ef7', edge: '#d4a030',
+    x: '#e06060', z: '#4d9ef7', edge: '#d4a030', meas: '#6088a8',
     busColors: ['#c85050','#b89020','#40a050','#30a0a0','#5060d0','#a030a0','#909098','#c07030'],
     waveW: 1.5,
   },
@@ -494,13 +734,16 @@ const THEMES = {
     label: '#374151', title: '#0f172a',
     clk: '#1d4ed8', high: '#1d4ed8', low: '#1d4ed8',
     data: '#1d4ed8', bus: '#1d4ed8',
-    x: '#b91c1c', z: '#1d4ed8', edge: '#92400e',
+    x: '#b91c1c', z: '#1d4ed8', edge: '#92400e', meas: '#406880',
     busColors: ['#b03040','#907020','#1a7030','#0a7878','#1040b0','#6020a0','#485060','#904018'],
     waveW: 1.5,
   }
 };
 
 // ───── js/model.js ─────
+const isGroupHdr = s => s != null && typeof s === 'object' && 'group' in s && !s.groupEnd;
+const isGroupEnd = s => s != null && typeof s === 'object' && s.groupEnd === true;
+
 function parseSpec(src) {
   return JSON.parse(src.replace(/,(\s*[}\]])/g, '$1'));
 }
@@ -523,8 +766,8 @@ function resolveWave(wave) {
 
 function levelY(state, hi, lo, mid) {
   if (!state) return null;
-  if ('1hHpP'.includes(state)) return hi;
-  if ('0lLnN'.includes(state)) return lo;
+  if ('1hHpPQ'.includes(state)) return hi;
+  if ('0lLnNR'.includes(state)) return lo;
   if ('zZ'.includes(state))    return mid;
   if (state === 'd' || state === '=' || /^[2-9]$/.test(state)) return mid;
   return null;
@@ -546,26 +789,60 @@ function assignBracketRows(intervals) {
 
 function slopeForCW(slopeFrac, CW) {
   return slopeFrac != null
-    ? Math.round(Math.min(0.45, slopeFrac) * CW)
+    ? Math.min(0.45, slopeFrac) * CW
     : Math.min(13, Math.floor(CW * 0.35));
 }
 
-function nodeXApprox(nd, signals, CELL_W, slopeFrac = null) {
+function nodeXApprox(nd, signals, CELL_W, slopeFrac = null, periodNs = 0) {
   const sig = signals.find(s => s?.name === nd.signal);
   if (!sig) return LABEL_W;
   const phase = sig.phase || 0, period = sig.period || 1;
-  const x0 = LABEL_W + (phase + nd.cycle * period) * CELL_W;
   const CW = period * CELL_W;
   const bs = slopeForCW(slopeFrac, CW);
+  const nudgePx = periodNs > 0 ? (sig.nudge?.[String(nd.cycle)] ?? 0) / periodNs * CELL_W : 0;
+  const x0 = LABEL_W + (phase + nd.cycle * period) * CELL_W + nudgePx;
   if (nd.anchor === 's') return x0 + bs;
   if (nd.anchor === 'e') return x0 + CW - bs;
   return x0;
 }
 
+function measurePtXApprox(pt, signals, CELL_W, slopeFrac, periodNs = 0) {
+  const sig = signals.find(s => s?.name === pt.signal);
+  if (!sig) return LABEL_W;
+  const phase = sig.phase || 0, period = sig.period || 1;
+  const CW = period * CELL_W;
+  const bs = slopeForCW(slopeFrac, CW);
+  const nudgePx = periodNs > 0 ? (sig.nudge?.[String(pt.cycle)] ?? 0) / periodNs * CELL_W : 0;
+  const x0 = LABEL_W + (phase + pt.cycle * period) * CELL_W + nudgePx;
+  if (pt.anchor === 's') return x0 + bs;
+  if (pt.anchor === 'e') return x0 + CW - bs;
+  return x0;
+}
+
 function geometry(spec, hscale) {
   const signals = spec.signal || [];
+
+  const visible = new Array(signals.length).fill(true);
+  {
+    const stack = [];
+    for (let i = 0; i < signals.length; i++) {
+      const s = signals[i];
+      const parentCollapsed = stack.length > 0 && stack[stack.length - 1];
+      if (isGroupEnd(s)) {
+        stack.pop();
+        visible[i] = false;
+      } else if (isGroupHdr(s)) {
+        visible[i] = !parentCollapsed;
+        stack.push(parentCollapsed || !!s.collapsed);
+      } else {
+        visible[i] = !parentCollapsed;
+      }
+    }
+  }
+
   let maxCells = 0;
-  signals.forEach(s => {
+  signals.forEach((s, i) => {
+    if (!visible[i] || isGroupHdr(s)) return;
     if (s?.name && s.wave) {
       const p = s.period || 1;
       maxCells = Math.max(maxCells, s.wave.replace(/ /g, '').length * p);
@@ -573,22 +850,24 @@ function geometry(spec, hscale) {
   });
   const CELL_W = Math.round(40 * hscale);
   const maxLen = Math.ceil(maxCells);
-  const slopeFrac = (spec.timing?.trise > 0 && spec.timing?.period > 0)
-    ? Math.min(0.45, spec.timing.trise / spec.timing.period)
+  const _timingRes = spec.timing?.resolution ?? spec.timing?.period;
+  const slopeFrac = (spec.timing?.trise > 0 && _timingRes > 0)
+    ? Math.min(0.45, spec.timing.trise / _timingRes)
     : null;
+  const _toNs = { fs: 1e-6, ps: 1e-3, ns: 1, us: 1e3, ms: 1e6, s: 1e9 };
+  const _gUnit = (spec.timing?.unit || 'ns').toLowerCase();
+  const _periodNs = (_timingRes > 0) ? _timingRes * (_toNs[_gUnit] || 1) : 0;
 
   const gapSpans = new Map();
-  if (Array.isArray(spec.edge) && spec.node) {
-    spec.edge.forEach(str => {
-      const m = str.match(/^([A-Za-z0-9]+)\s*[→>~-]+\s*([A-Za-z0-9]+)/);
-      if (!m) return;
-      const n1 = spec.node[m[1]], n2 = spec.node[m[2]];
+  if (Array.isArray(spec.constraint)) {
+    spec.constraint.forEach(c => {
+      const n1 = c.p1, n2 = c.p2;
       if (!n1 || !n2 || n1.signal === n2.signal) return;
       const i1 = signals.findIndex(s => s?.name === n1.signal);
       const i2 = signals.findIndex(s => s?.name === n2.signal);
       if (i1 < 0 || i2 < 0) return;
       const gapIdx = Math.max(i1, i2) - 1;
-      const xa = nodeXApprox(n1, signals, CELL_W, slopeFrac), xb = nodeXApprox(n2, signals, CELL_W, slopeFrac);
+      const xa = nodeXApprox(n1, signals, CELL_W, slopeFrac, _periodNs), xb = nodeXApprox(n2, signals, CELL_W, slopeFrac, _periodNs);
       if (!gapSpans.has(gapIdx)) gapSpans.set(gapIdx, []);
       gapSpans.get(gapIdx).push({ x1: Math.min(xa, xb), x2: Math.max(xa, xb) });
     });
@@ -602,11 +881,9 @@ function geometry(spec, hscale) {
 
   const sameHi = new Set();
   const sameLo = new Set();
-  if (Array.isArray(spec.edge) && spec.node) {
-    spec.edge.forEach(str => {
-      const m = str.match(/^([A-Za-z0-9]+)\s*[→>~-]+\s*([A-Za-z0-9]+)/);
-      if (!m) return;
-      const n1 = spec.node[m[1]], n2 = spec.node[m[2]];
+  if (Array.isArray(spec.constraint)) {
+    spec.constraint.forEach(c => {
+      const n1 = c.p1, n2 = c.p2;
       if (!n1 || !n2 || n1.signal !== n2.signal) return;
       const si = signals.findIndex(s => s?.name === n1.signal);
       if (si < 0) return;
@@ -624,16 +901,14 @@ function geometry(spec, hscale) {
   // Count stacked rows needed per signal for same-direction brackets
   const sameHiRows = new Map(); // sigIdx → row count
   const sameLoRows = new Map();
-  if (Array.isArray(spec.edge) && spec.node) {
+  if (Array.isArray(spec.constraint)) {
     const hiSpans = new Map(), loSpans = new Map();
-    spec.edge.forEach(str => {
-      const m = str.match(/^([A-Za-z0-9]+)\s*[→>~-]+\s*([A-Za-z0-9]+)/);
-      if (!m) return;
-      const n1 = spec.node[m[1]], n2 = spec.node[m[2]];
+    spec.constraint.forEach(c => {
+      const n1 = c.p1, n2 = c.p2;
       if (!n1 || !n2 || n1.signal !== n2.signal) return;
       const si = signals.findIndex(s => s?.name === n1.signal);
       if (si < 0) return;
-      const xa = nodeXApprox(n1, signals, CELL_W, slopeFrac), xb = nodeXApprox(n2, signals, CELL_W, slopeFrac);
+      const xa = nodeXApprox(n1, signals, CELL_W, slopeFrac, _periodNs), xb = nodeXApprox(n2, signals, CELL_W, slopeFrac, _periodNs);
       const target = sameHi.has(si) ? hiSpans : loSpans;
       if (!target.has(si)) target.set(si, []);
       target.get(si).push({ x1: Math.min(xa, xb), x2: Math.max(xa, xb) });
@@ -648,20 +923,63 @@ function geometry(spec, hscale) {
     });
   }
 
+  const measHiRows = new Map();
+  const measGapRows = new Map();
+  if (Array.isArray(spec.measure)) {
+    const hiMeasSpans = new Map(), gapMeasSpans = new Map();
+    spec.measure.forEach(m => {
+      if (!m?.p1 || !m?.p2) return;
+      const xa = measurePtXApprox(m.p1, signals, CELL_W, slopeFrac, _periodNs);
+      const xb = measurePtXApprox(m.p2, signals, CELL_W, slopeFrac, _periodNs);
+      if (m.p1.signal === m.p2.signal) {
+        const si = signals.findIndex(s => s?.name === m.p1.signal);
+        if (si < 0) return;
+        if (!hiMeasSpans.has(si)) hiMeasSpans.set(si, []);
+        hiMeasSpans.get(si).push({ x1: Math.min(xa, xb), x2: Math.max(xa, xb) });
+      } else {
+        const i1 = signals.findIndex(s => s?.name === m.p1.signal);
+        const i2 = signals.findIndex(s => s?.name === m.p2.signal);
+        if (i1 < 0 || i2 < 0) return;
+        const gapIdx = Math.max(i1, i2) - 1;
+        if (!gapMeasSpans.has(gapIdx)) gapMeasSpans.set(gapIdx, []);
+        gapMeasSpans.get(gapIdx).push({ x1: Math.min(xa, xb), x2: Math.max(xa, xb) });
+      }
+    });
+    hiMeasSpans.forEach((spans, si) => {
+      const rows = assignBracketRows(spans);
+      measHiRows.set(si, rows.length > 0 ? Math.max(...rows) + 1 : 1);
+    });
+    gapMeasSpans.forEach((spans, gapIdx) => {
+      const rows = assignBracketRows(spans);
+      measGapRows.set(gapIdx, rows.length > 0 ? Math.max(...rows) + 1 : 1);
+    });
+  }
+
   const signalTopY = [];
   let y = HEAD_H;
   for (let i = 0; i < signals.length; i++) {
+    if (!visible[i]) {
+      signalTopY.push(null);
+      continue;
+    }
+    if (isGroupHdr(signals[i])) {
+      signalTopY.push(y);
+      y += SIG_H;
+      continue;
+    }
     const nHi = sameHiRows.get(i) || (sameHi.has(i) ? 1 : 0);
-    if (nHi > 0) y += nHi * DELAY_GAP;
+    const nMeasHi = measHiRows.get(i) || 0;
+    if (nHi + nMeasHi > 0) y += (nHi + nMeasHi) * DELAY_GAP;
     signalTopY.push(y);
     const n = gapCounts.get(i) || 0;
+    const nMeasGap = measGapRows.get(i) || 0;
     const nLo = sameLoRows.get(i) || (sameLo.has(i) ? 1 : 0);
-    y += SIG_H + (n > 0 ? n * DELAY_GAP : 0) + (nLo > 0 ? nLo * DELAY_GAP : 0);
+    y += SIG_H + ((n + nMeasGap) > 0 ? (n + nMeasGap) * DELAY_GAP : 0) + (nLo > 0 ? nLo * DELAY_GAP : 0);
   }
 
   const W = Math.max(LABEL_W + maxLen * CELL_W + PAD_R, 300);
   const H = Math.max(y + FOOT_H, 120);
-  return { signals, maxLen, CELL_W, W, H, signalTopY, gapAfter, gapCounts, sameHi, sameLo, sameHiRows, sameLoRows, slopeFrac };
+  return { signals, maxLen, CELL_W, W, H, signalTopY, gapAfter, gapCounts, sameHi, sameLo, sameHiRows, sameLoRows, slopeFrac, measHiRows, measGapRows, visible };
 }
 
 function formatTimeLabel(cycle, period) {
@@ -689,18 +1007,35 @@ function formatSpec(spec) {
 }
 
 // ───── js/renderer.js ─────
-function drawAll(ctx, T, spec, signals, maxLen, CELL_W, W, H, signalTopY, gapAfter, gapCounts, sameHi, sameLo, slopeFrac = null) {
+function drawAll(ctx, T, spec, signals, maxLen, CELL_W, W, H, signalTopY, gapAfter, gapCounts, sameHi, sameLo, slopeFrac = null, measHiRows = new Map(), measGapRows = new Map(), sameHiRows = new Map()) {
   const MONO = '"Roboto Mono", monospace';
   if (!signalTopY) { signalTopY = signals.map((_, i) => HEAD_H + i * SIG_H); gapAfter = new Set(); gapCounts = new Map(); sameHi = new Set(); sameLo = new Set(); }
 
   if (spec.title) {
     ctx.font = `600 12px "Inter", sans-serif`;
     ctx.fillStyle = T.title; ctx.textAlign = 'left';
-    ctx.fillText(spec.title, LABEL_W, 20);
+    ctx.fillText(spec.title, LABEL_W, 16);
   }
 
   const timing = spec.timing;
-  const hasTiming = !!(timing?.period > 0);
+  const _timingRes = timing?.resolution ?? timing?.period;
+  const hasTiming = !!(_timingRes > 0);
+  const _toNs = { fs: 1e-6, ps: 1e-3, ns: 1, us: 1e3, ms: 1e6, s: 1e9 };
+  const _diagUnit = (timing?.unit || 'ns').toLowerCase();
+  const periodNs = hasTiming ? _timingRes * (_toNs[_diagUnit] || 1) : 0;
+  const _unitScales = [['s',1e9],['ms',1e6],['µs',1e3],['ns',1],['ps',1e-3],['fs',1e-6]];
+  let _dispUnit = timing?.unit || 'ns', _dispScale = _toNs[_diagUnit] || 1;
+  if (hasTiming && periodNs > 0) {
+    const maxNs = periodNs * maxLen;
+    for (const [u, sc] of _unitScales) { if (maxNs / sc >= 0.99) { _dispUnit = u; _dispScale = sc; break; } }
+  }
+  const _step = hasTiming ? periodNs / _dispScale : 1;
+  const _dec = (_step > 0 && _step < 1) ? Math.min(6, Math.ceil(-Math.log10(_step + 1e-15))) : 0;
+  const _maxLabel = hasTiming ? (maxLen * periodNs / _dispScale).toFixed(_dec) : String(maxLen);
+  const _minTickPx = _maxLabel.length * 7 + 8;
+  let _tickInterval = 1;
+  { const _seq = [1,2,5]; let _mag = 1;
+    outer: for (;;) { for (const s of _seq) { if (s*_mag*CELL_W >= _minTickPx) { _tickInterval = s*_mag; break outer; } } _mag *= 10; if (_mag > 1e9) break; } }
 
   for (let i = 0; i <= maxLen; i++) {
     const x = LABEL_W + i * CELL_W;
@@ -708,30 +1043,66 @@ function drawAll(ctx, T, spec, signals, maxLen, CELL_W, W, H, signalTopY, gapAft
     ctx.lineWidth = 1; ctx.setLineDash([]);
     ctx.beginPath(); ctx.moveTo(x, HEAD_H); ctx.lineTo(x, H - FOOT_H); ctx.stroke();
     ctx.font = `10px ${MONO}`; ctx.fillStyle = T.label; ctx.textAlign = 'center';
-    if (hasTiming) {
-      if (i > 0) ctx.fillText(formatTimeLabel(i, timing.period), x, HEAD_H - 7);
-    } else {
-      if (i < maxLen) ctx.fillText(String(i), x + CELL_W / 2, HEAD_H - 7);
+    if (i > 0 && i % _tickInterval === 0) {
+      const lbl = hasTiming ? (i * periodNs / _dispScale).toFixed(_dec) : String(i);
+      ctx.fillText(lbl, x, HEAD_H - 7);
     }
   }
   ctx.textAlign = 'left';
   ctx.font = `10px ${MONO}`; ctx.fillStyle = T.label;
-  ctx.fillText(hasTiming ? (timing.unit || 'time') : 'Cycle', 4, HEAD_H - 7);
+  ctx.fillText(hasTiming ? _dispUnit : 'Cycle', 4, HEAD_H - 7);
 
   ctx.strokeStyle = T.gridL; ctx.lineWidth = 1; ctx.setLineDash([]);
   ctx.beginPath(); ctx.moveTo(0, HEAD_H); ctx.lineTo(W, HEAD_H); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(LABEL_W, 0); ctx.lineTo(LABEL_W, H); ctx.stroke();
 
   signals.forEach((_, ri) => {
-    const y = signalTopY[ri] + SIG_H;
+    const y = signalTopY[ri];
+    if (y === null) return;
     ctx.strokeStyle = T.grid; ctx.lineWidth = 0.5; ctx.setLineDash([2, 4]);
-    ctx.beginPath(); ctx.moveTo(LABEL_W, y); ctx.lineTo(W, y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(LABEL_W, y + SIG_H); ctx.lineTo(W, y + SIG_H); ctx.stroke();
   });
   ctx.setLineDash([]);
+
+  const DCOLORS_HEX = ['#e06424','#24bc94','#c438ac','#acc420'];
+  const domainColor = new Map();
+  {
+    let di = 0;
+    signals.forEach((sig, ri) => {
+      if (!isGroupHdr(sig) || !sig.clock) return;
+      const hex = sig.clockColor || DCOLORS_HEX[di % DCOLORS_HEX.length]; di++;
+      const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+      domainColor.set(ri, { solid: hex, rgba: `rgba(${r},${g},${b},0.6)`, showLines: sig.clockLines !== false });
+    });
+  }
 
   const sigRowY = {};
   signals.forEach((sig, ri) => {
     const topY = signalTopY[ri];
+    if (topY === null || isGroupEnd(sig)) return;
+
+    if (isGroupHdr(sig)) {
+      ctx.fillStyle = T.grid + '66';
+      ctx.fillRect(0, topY, W, SIG_H);
+      ctx.font = `600 11px "Inter", sans-serif`;
+      ctx.fillStyle = T.label;
+      ctx.textAlign = 'left';
+      ctx.fillText((sig.collapsed ? '▶' : '▼') + '  ' + (sig.group || ''), HANDLE_W + 8, topY + SIG_H / 2 + 4);
+      if (sig.clock) {
+        ctx.font = `500 9px "Inter", sans-serif`;
+        ctx.fillStyle = domainColor.get(ri)?.solid || T.label;
+        ctx.textAlign = 'right';
+        ctx.fillText('◎ ' + sig.clock, W - 10, topY + SIG_H / 2 + 4);
+      } else if (!sig.collapsed && signals[ri + 1] && isGroupEnd(signals[ri + 1])) {
+        ctx.font = `10px "Inter", sans-serif`;
+        ctx.fillStyle = T.label + '66';
+        ctx.textAlign = 'right';
+        ctx.fillText('empty — drag signals here', W - 10, topY + SIG_H / 2 + 4);
+      }
+      ctx.textAlign = 'left';
+      return;
+    }
+
     if (!sig?.name) {
       ctx.strokeStyle = T.grid; ctx.lineWidth = 0.5; ctx.setLineDash([3, 5]);
       ctx.beginPath(); ctx.moveTo(LABEL_W + 4, topY + SIG_H/2); ctx.lineTo(W - 4, topY + SIG_H/2); ctx.stroke();
@@ -744,38 +1115,63 @@ function drawAll(ctx, T, spec, signals, maxLen, CELL_W, W, H, signalTopY, gapAft
     if (sig.wave) {
       ctx.save();
       ctx.beginPath();
-      ctx.rect(LABEL_W, HEAD_H, W - LABEL_W, H - HEAD_H);
+      ctx.rect(LABEL_W, HEAD_H, maxLen * CELL_W, H - HEAD_H);
       ctx.clip();
-      drawWaveCanvas(ctx, sig, topY, CELL_W, T, slopeFrac);
+      drawWaveCanvas(ctx, sig, topY, CELL_W, T, slopeFrac, periodNs);
       ctx.restore();
     }
   });
 
-  const nodeRail = {};
-  if (Array.isArray(spec.edge) && spec.node) {
-    spec.edge.forEach(str => {
-      const m = str.match(/^([A-Za-z0-9]+)\s*[→>~-]+\s*([A-Za-z0-9]+)/);
-      if (!m) return;
-      const na = spec.node[m[1]], nb = spec.node[m[2]];
-      if (!na || !nb || na.signal === nb.signal) return;
-      const ia = signals.findIndex(s => s?.name === na.signal);
-      const ib = signals.findIndex(s => s?.name === nb.signal);
-      if (ia < 0 || ib < 0) return;
-      nodeRail[m[1]] = ib > ia ? 'lo' : 'hi';
-      nodeRail[m[2]] = ia > ib ? 'lo' : 'hi';
+  {
+    const domains = [];
+    const stack = [];
+    signals.forEach((sig, ri) => {
+      const topY = signalTopY[ri];
+      if (isGroupHdr(sig)) {
+        if (sig.clock) {
+          const dc = domainColor.get(ri);
+          const hdrBot = (topY ?? HEAD_H) + SIG_H;
+          const d = { color: dc?.rgba, period: sig.period || 1, showLines: dc?.showLines ?? true,
+            yTop: hdrBot, yBot: hdrBot };
+          stack.push(d); domains.push(d);
+        } else { stack.push(null); }
+        return;
+      }
+      if (isGroupEnd(sig)) { stack.pop(); return; }
+      const d = stack.length ? stack[stack.length - 1] : null;
+      if (d && topY !== null) d.yBot = topY + SIG_H;
+    });
+    ctx.setLineDash([]); ctx.lineWidth = 1;
+    domains.forEach(({ color, period, showLines, yTop, yBot }) => {
+      if (!showLines || yTop >= yBot) return;
+      ctx.strokeStyle = color;
+      for (let i = 1; i * period <= maxLen + period; i++) {
+        const x = LABEL_W + i * period * CELL_W;
+        if (x > LABEL_W && x <= LABEL_W + maxLen * CELL_W + 1) {
+          ctx.beginPath(); ctx.moveTo(x, yTop); ctx.lineTo(x, yBot); ctx.stroke();
+        }
+      }
     });
   }
 
-  const nodeXY = {};
-  if (spec.node) {
-    Object.entries(spec.node).forEach(([key, nd]) => {
-      const ty = sigRowY[nd.signal]; if (ty === undefined) return;
+  if (Array.isArray(spec.constraint)) {
+    const gapGroups = new Map();
+    const sameSigHi = new Map();
+    const sameSigLo = new Map();
+
+    const _toNsR = { fs: 1e-6, ps: 1e-3, ns: 1, us: 1e3, ms: 1e6, s: 1e9 };
+    const _diagUnitR = (spec.timing?.unit || 'ns').toLowerCase();
+
+    const _cptXY = (nd, ndIdx, otherIdx) => {
+      const ty = signalTopY[ndIdx]; if (ty === null || ty === undefined) return null;
       const hi = ty + 6, lo = ty + SIG_H - 6, mid2 = ty + SIG_H / 2;
-      const sigObj = signals.find(s => s?.name === nd.signal);
+      const sigObj = signals[ndIdx];
       const period2 = sigObj?.period || 1, phase2 = sigObj?.phase || 0;
       const CW2 = CELL_W * period2;
-      const x0 = LABEL_W + (phase2 + nd.cycle * period2) * CELL_W;
+      const nudgePx2 = periodNs > 0 ? (sigObj?.nudge?.[String(nd.cycle)] ?? 0) / periodNs * CELL_W : 0;
+      const x0 = LABEL_W + (phase2 + nd.cycle * period2) * CELL_W + nudgePx2;
       const busSlope = slopeForCW(slopeFrac, CW2);
+      const rail = otherIdx !== ndIdx ? (otherIdx > ndIdx ? 'lo' : 'hi') : null;
       let nx = x0, ny = mid2;
       if (sigObj?.wave) {
         const res = resolveWave(sigObj.wave);
@@ -783,57 +1179,56 @@ function drawAll(ctx, T, spec, signals, maxLen, CELL_W, W, H, signalTopY, gapAft
         const isBus = ch==='d'||ch==='D'||ch==='='||/^[2-9]$/.test(ch);
         if (isBus && (nd.anchor === 'e' || nd.anchor === 's')) {
           nx = nd.anchor === 'e' ? x0 + CW2 - busSlope : x0 + busSlope;
-          ny = nodeRail[key] === 'lo' ? lo : hi;
+          ny = rail === 'lo' ? lo : hi;
         } else if (isBus) {
           const ci = Math.floor(nd.cycle);
           const prevCh = ci > 0 ? res[ci - 1] : null;
           const prevIsBus = prevCh && (prevCh==='d'||prevCh==='D'||prevCh==='='||/^[2-9]$/.test(prevCh));
-          if (!prevIsBus && prevCh !== null) {
-            ny = levelY(prevCh, hi, lo, mid2) ?? mid2;
-          } else {
-            ny = mid2;
-          }
+          ny = (!prevIsBus && prevCh !== null) ? (levelY(prevCh, hi, lo, mid2) ?? mid2) : mid2;
         } else {
-          const fy = levelY(ch, hi, lo, mid2);
-          if (fy !== null && fy !== mid2 && nodeRail[key]) {
-            ny = nodeRail[key] === 'lo' ? lo : hi;
-          } else {
-            ny = fy !== null ? fy : mid2;
+          if (nd.anchor === 's') nx = x0 + busSlope;
+          else if (nd.anchor === 'e') nx = x0 + CW2 - busSlope;
+          const ci = Math.floor(nd.cycle);
+          let effectiveCh = ch;
+          if ('01hHlL'.includes(ch) && Number.isInteger(nd.cycle) && !nd.anchor) {
+            const prevCh = ci > 0 ? res[ci - 1] : null;
+            if (prevCh && '01hHlL'.includes(prevCh) && levelY(prevCh, hi, lo, mid2) !== levelY(ch, hi, lo, mid2))
+              effectiveCh = prevCh;
           }
+          const fy = levelY(effectiveCh, hi, lo, mid2);
+          ny = rail ? (rail === 'lo' ? lo : hi) : (fy !== null ? fy : mid2);
         }
       }
-      nodeXY[key] = { x: nx, y: ny, signal: nd.signal };
-      ctx.fillStyle = T.edge;
-      ctx.beginPath(); ctx.arc(nx, ny, 3, 0, Math.PI * 2); ctx.fill();
-    });
-  }
+      return { x: nx, y: ny, signal: nd.signal };
+    };
 
-  if (Array.isArray(spec.edge)) {
-    const gapGroups   = new Map(); // cross-signal
-    const sameSigHi   = new Map(); // sigIdx → [{p1,p2,label}] above signal
-    const sameSigLo   = new Map(); // sigIdx → [{p1,p2,label}] below signal
-
-    spec.edge.forEach(str => {
-      const m = str.match(/^([A-Za-z0-9]+)\s*[→>~-]+\s*([A-Za-z0-9]+)\s*(.*)?$/);
-      if (!m) return;
-      const p1 = nodeXY[m[1]], p2 = nodeXY[m[2]];
+    spec.constraint.forEach(c => {
+      if (!c?.p1 || !c?.p2) return;
+      const i1 = signals.findIndex(s => s?.name === c.p1.signal);
+      const i2 = signals.findIndex(s => s?.name === c.p2.signal);
+      if (i1 < 0 || i2 < 0) return;
+      const p1 = _cptXY(c.p1, i1, i2), p2 = _cptXY(c.p2, i2, i1);
       if (!p1 || !p2) return;
-      const label = m[3]?.trim();
-      const isCross = p1.signal && p2.signal && p1.signal !== p2.signal;
-      if (isCross) {
-        const i1 = signals.findIndex(s => s?.name === p1.signal);
-        const i2 = signals.findIndex(s => s?.name === p2.signal);
+
+      ctx.fillStyle = T.edge;
+      ctx.beginPath(); ctx.arc(p1.x, p1.y, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(p2.x, p2.y, 3, 0, Math.PI * 2); ctx.fill();
+
+      const label = (c.showValue && c.value != null)
+        ? (parseFloat((c.value / (_toNsR[_diagUnitR] || 1)).toPrecision(4)) + ' ' + _diagUnitR)
+        : (c.label || '');
+
+      if (i1 !== i2) {
         const gapIdx = Math.max(i1, i2) - 1;
         if (!gapGroups.has(gapIdx)) gapGroups.set(gapIdx, []);
         gapGroups.get(gapIdx).push({ p1, p2, label });
       } else {
-        const si = signals.findIndex(s => s?.name === p1.signal);
-        if (sameHi?.has(si)) {
-          if (!sameSigHi.has(si)) sameSigHi.set(si, []);
-          sameSigHi.get(si).push({ p1, p2, label });
-        } else if (sameLo?.has(si)) {
-          if (!sameSigLo.has(si)) sameSigLo.set(si, []);
-          sameSigLo.get(si).push({ p1, p2, label });
+        if (sameHi?.has(i1)) {
+          if (!sameSigHi.has(i1)) sameSigHi.set(i1, []);
+          sameSigHi.get(i1).push({ p1, p2, label });
+        } else if (sameLo?.has(i1)) {
+          if (!sameSigLo.has(i1)) sameSigLo.set(i1, []);
+          sameSigLo.get(i1).push({ p1, p2, label });
         } else {
           drawArrowCanvas(ctx, p1.x, p1.y, p2.x, p2.y, label, T);
         }
@@ -845,8 +1240,7 @@ function drawAll(ctx, T, spec, signals, maxLen, CELL_W, W, H, signalTopY, gapAft
       const intervals = brackets.map(b => ({ x1: Math.min(b.p1.x, b.p2.x), x2: Math.max(b.p1.x, b.p2.x) }));
       const rows = assignBracketRows(intervals);
       brackets.forEach((b, j) => {
-        const midY = ty - DELAY_GAP * (rows[j] + 0.5);
-        drawDelayBracket(ctx, b.p1.x, b.p1.y, b.p2.x, b.p2.y, midY, b.label, T);
+        drawDelayBracket(ctx, b.p1.x, b.p1.y, b.p2.x, b.p2.y, ty - DELAY_GAP * (rows[j] + 0.5), b.label, T);
       });
     });
 
@@ -855,8 +1249,7 @@ function drawAll(ctx, T, spec, signals, maxLen, CELL_W, W, H, signalTopY, gapAft
       const intervals = brackets.map(b => ({ x1: Math.min(b.p1.x, b.p2.x), x2: Math.max(b.p1.x, b.p2.x) }));
       const rows = assignBracketRows(intervals);
       brackets.forEach((b, j) => {
-        const midY = ty + SIG_H + DELAY_GAP * (rows[j] + 0.5);
-        drawDelayBracket(ctx, b.p1.x, b.p1.y, b.p2.x, b.p2.y, midY, b.label, T);
+        drawDelayBracket(ctx, b.p1.x, b.p1.y, b.p2.x, b.p2.y, ty + SIG_H + DELAY_GAP * (rows[j] + 0.5), b.label, T);
       });
     });
 
@@ -865,11 +1258,12 @@ function drawAll(ctx, T, spec, signals, maxLen, CELL_W, W, H, signalTopY, gapAft
       const intervals = brackets.map(b => ({ x1: Math.min(b.p1.x, b.p2.x), x2: Math.max(b.p1.x, b.p2.x) }));
       const rows = assignBracketRows(intervals);
       brackets.forEach((b, j) => {
-        const midY = gapTop + DELAY_GAP * (rows[j] + 0.5);
-        drawDelayBracket(ctx, b.p1.x, b.p1.y, b.p2.x, b.p2.y, midY, b.label, T);
+        drawDelayBracket(ctx, b.p1.x, b.p1.y, b.p2.x, b.p2.y, gapTop + DELAY_GAP * (rows[j] + 0.5), b.label, T);
       });
     });
   }
+
+  drawMeasureAnnotations(ctx, spec, signals, signalTopY, CELL_W, T, slopeFrac, measHiRows, measGapRows, sameHiRows, gapCounts, periodNs);
 }
 
 function drawDelayBracket(ctx, x1, y1, x2, y2, midY, label, T) {
@@ -908,7 +1302,7 @@ function drawDelayBracket(ctx, x1, y1, x2, y2, midY, label, T) {
   ctx.textAlign = 'left';
 }
 
-function drawWaveCanvas(ctx, sig, topY, CELL_W, T, slopeFrac = null) {
+function drawWaveCanvas(ctx, sig, topY, CELL_W, T, slopeFrac = null, periodNs = 0) {
   const hi  = topY + 6;
   const lo  = topY + SIG_H - 6;
   const mid = topY + SIG_H / 2;
@@ -960,9 +1354,87 @@ function drawWaveCanvas(ctx, sig, topY, CELL_W, T, slopeFrac = null) {
     let fillY = null, fillColor = null, fillDash = null;
     if      (firstCh === '0' || firstCh === 'l' || firstCh === 'L') { fillY = lo;  fillColor = T.low; }
     else if (firstCh === '1' || firstCh === 'h' || firstCh === 'H') { fillY = hi;  fillColor = T.high; }
-    else if (firstCh === 'p' || firstCh === 'P')                    { fillY = lo;  fillColor = T.clk; }
-    else if (firstCh === 'n' || firstCh === 'N')                    { fillY = hi;  fillColor = T.clk; }
-    else if (firstCh === 'z' || firstCh === 'Z')                    { fillY = mid; fillColor = T.z; fillDash = [4, 3]; }
+    else if (firstCh === 'p' || firstCh === 'P') {
+      ctx.save();
+      ctx.beginPath(); ctx.rect(LABEL_W, topY, fillX1 - LABEL_W, SIG_H); ctx.clip();
+      ctx.strokeStyle = T.clk; ctx.lineWidth = T.waveW; ctx.setLineDash([]);
+      const numCells = Math.ceil(phase / period);
+      for (let k = 1; k <= numCells; k++) {
+        const cx0 = fillX1 - k * CW, cex = cx0 + CW / 2, cx1 = cx0 + CW;
+        ctx.beginPath();
+        ctx.moveTo(cx0, lo); ctx.lineTo(cx0, hi); ctx.lineTo(cex, hi); ctx.lineTo(cex, lo); ctx.lineTo(cx1, lo);
+        ctx.stroke();
+        if (firstCh === 'P') {
+          ctx.fillStyle = T.clk;
+          ctx.beginPath();
+          ctx.moveTo(cx0, hi - 2); ctx.lineTo(cx0 - 3, hi + 7); ctx.lineTo(cx0 + 3, hi + 7);
+          ctx.closePath(); ctx.fill();
+        }
+      }
+      ctx.restore();
+      penX = fillX1; penY = lo;
+    } else if (firstCh === 'n' || firstCh === 'N') {
+      ctx.save();
+      ctx.beginPath(); ctx.rect(LABEL_W, topY, fillX1 - LABEL_W, SIG_H); ctx.clip();
+      ctx.strokeStyle = T.clk; ctx.lineWidth = T.waveW; ctx.setLineDash([]);
+      const numCells = Math.ceil(phase / period);
+      for (let k = 1; k <= numCells; k++) {
+        const cx0 = fillX1 - k * CW, cex = cx0 + CW / 2, cx1 = cx0 + CW;
+        ctx.beginPath();
+        ctx.moveTo(cx0, hi); ctx.lineTo(cx0, lo); ctx.lineTo(cex, lo); ctx.lineTo(cex, hi); ctx.lineTo(cx1, hi);
+        ctx.stroke();
+        if (firstCh === 'N') {
+          ctx.fillStyle = T.clk;
+          ctx.beginPath();
+          ctx.moveTo(cx0, lo + 2); ctx.lineTo(cx0 - 3, lo - 7); ctx.lineTo(cx0 + 3, lo - 7);
+          ctx.closePath(); ctx.fill();
+        }
+      }
+      ctx.restore();
+      penX = fillX1; penY = hi;
+    } else if (firstCh === 'Q') {
+      ctx.save();
+      ctx.beginPath(); ctx.rect(LABEL_W, topY, fillX1 - LABEL_W, SIG_H); ctx.clip();
+      ctx.strokeStyle = T.clk; ctx.lineWidth = T.waveW; ctx.setLineDash([]);
+      const numCellsQ = Math.ceil(phase / period);
+      for (let k = 1; k <= numCellsQ; k++) {
+        const cx0 = fillX1 - k * CW, cex = cx0 + CW / 2, cx1 = cx0 + CW;
+        ctx.beginPath();
+        ctx.moveTo(cx0, lo); ctx.lineTo(cx0, hi); ctx.lineTo(cex, hi); ctx.lineTo(cex, lo); ctx.lineTo(cx1, lo);
+        ctx.stroke();
+        ctx.fillStyle = T.clk;
+        ctx.beginPath(); ctx.moveTo(cx0, hi - 2); ctx.lineTo(cx0 - 3, hi + 7); ctx.lineTo(cx0 + 3, hi + 7); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(cex, lo + 2); ctx.lineTo(cex - 3, lo - 7); ctx.lineTo(cex + 3, lo - 7); ctx.closePath(); ctx.fill();
+      }
+      ctx.restore();
+      penX = fillX1; penY = lo;
+    } else if (firstCh === 'R') {
+      ctx.save();
+      ctx.beginPath(); ctx.rect(LABEL_W, topY, fillX1 - LABEL_W, SIG_H); ctx.clip();
+      ctx.strokeStyle = T.clk; ctx.lineWidth = T.waveW; ctx.setLineDash([]);
+      const numCellsR = Math.ceil(phase / period);
+      for (let k = 1; k <= numCellsR; k++) {
+        const cx0 = fillX1 - k * CW, cex = cx0 + CW / 2, cx1 = cx0 + CW;
+        ctx.beginPath();
+        ctx.moveTo(cx0, hi); ctx.lineTo(cx0, lo); ctx.lineTo(cex, lo); ctx.lineTo(cex, hi); ctx.lineTo(cx1, hi);
+        ctx.stroke();
+        ctx.fillStyle = T.clk;
+        ctx.beginPath(); ctx.moveTo(cx0, lo + 2); ctx.lineTo(cx0 - 3, lo - 7); ctx.lineTo(cx0 + 3, lo - 7); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(cex, hi - 2); ctx.lineTo(cex - 3, hi + 7); ctx.lineTo(cex + 3, hi + 7); ctx.closePath(); ctx.fill();
+      }
+      ctx.restore();
+      penX = fillX1; penY = hi;
+    } else if (firstCh === 'z' || firstCh === 'Z')                    { fillY = mid; fillColor = T.z; fillDash = [4, 3]; }
+    else if (firstCh === 'd' || firstCh === 'D' || firstCh === '=' || /^[2-9]$/.test(firstCh)) {
+      const bc = /^[2-9]$/.test(firstCh) ? T.busColors[parseInt(firstCh) - 2] : T.bus;
+      curBusColor = bc;
+      ctx.fillStyle = bc + '1a';
+      ctx.fillRect(LABEL_W, hi, fillX1 - LABEL_W, lo - hi);
+      ctx.strokeStyle = bc; ctx.lineWidth = T.waveW; ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(LABEL_W, hi); ctx.lineTo(fillX1, hi); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(LABEL_W, lo); ctx.lineTo(fillX1, lo); ctx.stroke();
+      penX = fillX1; penY = hi; prev = 'd';
+    }
     if (fillY !== null) {
       ctx.strokeStyle = fillColor; ctx.lineWidth = T.waveW;
       ctx.setLineDash(fillDash || []);
@@ -972,31 +1444,47 @@ function drawWaveCanvas(ctx, sig, topY, CELL_W, T, slopeFrac = null) {
     }
   }
 
+  // Pre-compute cell boundaries with forward clamping: a nudge that pushes a boundary past later
+  // cells leaves those later cells zero-width (skipped by x1<=x0 guard), so the visual transition
+  // stays at the nudged position rather than being collapsed back.
+  const _bnd = [];
+  for (let j = 0; j <= resolved.length; j++)
+    _bnd[j] = LABEL_W + (phase + j * period) * CELL_W + (periodNs > 0 ? (sig.nudge?.[String(j)] ?? 0) / periodNs * CELL_W : 0);
+  for (let j = 1; j <= resolved.length; j++)
+    if (_bnd[j] < _bnd[j - 1]) _bnd[j] = _bnd[j - 1];
+
   for (let i = 0; i < resolved.length; i++) {
     const ch = resolved[i];
-    const x0 = LABEL_W + (phase + i * period) * CELL_W;
-    const x1 = x0 + CW;
+    const x0 = _bnd[i], x1 = _bnd[i + 1];
+    if (x1 <= x0) continue;
 
     if (ch === '1' || ch === 'h' || ch === 'H') {
       const fy = penY !== null ? penY : levelY(prev, hi, lo, mid);
-      if (fy !== null && fy !== hi) pen(x0, fy, T.high);
-      pen(x0, hi, T.high); pen(x1, hi, T.high);
+      if (fy !== null && fy !== hi) {
+        const bs = slopeFrac != null ? slopeForCW(slopeFrac, CW) : 0;
+        pen(x0, fy, T.high); pen(x0 + bs, hi, T.high);
+      } else { pen(x0, hi, T.high); }
+      pen(x1, hi, T.high);
       prev = '1';
 
     } else if (ch === '0' || ch === 'l' || ch === 'L') {
       const fy = penY !== null ? penY : levelY(prev, hi, lo, mid);
-      if (fy !== null && fy !== lo) pen(x0, fy, T.low);
-      pen(x0, lo, T.low); pen(x1, lo, T.low);
+      if (fy !== null && fy !== lo) {
+        const bs = slopeFrac != null ? slopeForCW(slopeFrac, CW) : 0;
+        pen(x0, fy, T.low); pen(x0 + bs, lo, T.low);
+      } else { pen(x0, lo, T.low); }
+      pen(x1, lo, T.low);
       prev = '0';
 
     } else if (ch === 'z' || ch === 'Z') {
       const fy = penY !== null ? penY : levelY(prev, hi, lo, mid);
       if (fy !== null && fy !== mid) { pen(x0, fy, T.z); pen(x0, mid, T.z); }
       flush();
+      const zEnd = Math.max(x0, x1);
       ctx.strokeStyle = T.z; ctx.lineWidth = T.waveW; ctx.setLineDash([]);
-      ctx.beginPath(); ctx.moveTo(x0, mid); ctx.lineTo(x1, mid); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x0, mid); ctx.lineTo(zEnd, mid); ctx.stroke();
       ctx.setLineDash([]);
-      curColor = null; penX = x1; penY = mid;
+      curColor = null; penX = zEnd; penY = mid;
       prev = 'z';
 
     } else if (ch === 'x' || ch === 'X') {
@@ -1008,8 +1496,8 @@ function drawWaveCanvas(ctx, sig, topY, CELL_W, T, slopeFrac = null) {
       const slope = slopeForCW(slopeFrac, CW);
       const prevState = prev;
       const nextState = xEnd + 1 < resolved.length ? resolved[xEnd + 1] : null;
-      const runX0 = (i === 0 && phase > 0) ? LABEL_W : LABEL_W + (phase + i * period) * CELL_W;
-      const runX1 = LABEL_W + (phase + (xEnd + 1) * period) * CELL_W;
+      const runX0 = (i === 0 && phase > 0) ? LABEL_W : _bnd[i];
+      const runX1 = _bnd[xEnd + 1];
       const entryFromLogic = prevState && '01hHlLpn'.includes(prevState);
       const exitToLogic    = nextState && '01hHlLpn'.includes(nextState);
 
@@ -1065,29 +1553,57 @@ function drawWaveCanvas(ctx, sig, topY, CELL_W, T, slopeFrac = null) {
       prev = 'x';
 
     } else if (ch === 'p' || ch === 'P') {
-      const ex = x0 + CW / 2;
-      pen(x0, lo, T.clk); pen(ex, lo, T.clk); pen(ex, hi, T.clk); pen(x1, hi, T.clk);
+      const ex = (x0 + x1) / 2;
+      const fy = penY !== null ? penY : (levelY(prev, hi, lo, mid) ?? lo);
+      if (fy !== hi) pen(x0, fy, T.clk);
+      pen(x0, hi, T.clk); pen(ex, hi, T.clk); pen(ex, lo, T.clk); pen(x1, lo, T.clk);
       if (ch === 'P') {
         flush();
         ctx.fillStyle = T.clk;
         ctx.beginPath();
-        ctx.moveTo(ex, hi - 2); ctx.lineTo(ex - 3, hi + 7); ctx.lineTo(ex + 3, hi + 7);
+        ctx.moveTo(x0, hi - 2); ctx.lineTo(x0 - 3, hi + 7); ctx.lineTo(x0 + 3, hi + 7);
         ctx.closePath(); ctx.fill();
-        penX = x1; penY = hi;
+        penX = x1; penY = lo;
       }
       prev = 'p';
 
     } else if (ch === 'n' || ch === 'N') {
-      const ex = x0 + CW / 2;
-      pen(x0, hi, T.clk); pen(ex, hi, T.clk); pen(ex, lo, T.clk); pen(x1, lo, T.clk);
+      const ex = (x0 + x1) / 2;
+      const fy = penY !== null ? penY : (levelY(prev, hi, lo, mid) ?? hi);
+      if (fy !== lo) pen(x0, fy, T.clk);
+      pen(x0, lo, T.clk); pen(ex, lo, T.clk); pen(ex, hi, T.clk); pen(x1, hi, T.clk);
       if (ch === 'N') {
         flush();
         ctx.fillStyle = T.clk;
         ctx.beginPath();
-        ctx.moveTo(ex, lo + 2); ctx.lineTo(ex - 3, lo - 7); ctx.lineTo(ex + 3, lo - 7);
+        ctx.moveTo(x0, lo + 2); ctx.lineTo(x0 - 3, lo - 7); ctx.lineTo(x0 + 3, lo - 7);
         ctx.closePath(); ctx.fill();
-        penX = x1; penY = lo;
+        penX = x1; penY = hi;
       }
+      prev = 'n';
+
+    } else if (ch === 'Q') {
+      const ex = (x0 + x1) / 2;
+      const fy = penY !== null ? penY : (levelY(prev, hi, lo, mid) ?? lo);
+      if (fy !== hi) pen(x0, fy, T.clk);
+      pen(x0, hi, T.clk); pen(ex, hi, T.clk); pen(ex, lo, T.clk); pen(x1, lo, T.clk);
+      flush();
+      ctx.fillStyle = T.clk;
+      ctx.beginPath(); ctx.moveTo(x0, hi - 2); ctx.lineTo(x0 - 3, hi + 7); ctx.lineTo(x0 + 3, hi + 7); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(ex, lo + 2); ctx.lineTo(ex - 3, lo - 7); ctx.lineTo(ex + 3, lo - 7); ctx.closePath(); ctx.fill();
+      penX = x1; penY = lo;
+      prev = 'p';
+
+    } else if (ch === 'R') {
+      const ex = (x0 + x1) / 2;
+      const fy = penY !== null ? penY : (levelY(prev, hi, lo, mid) ?? hi);
+      if (fy !== lo) pen(x0, fy, T.clk);
+      pen(x0, lo, T.clk); pen(ex, lo, T.clk); pen(ex, hi, T.clk); pen(x1, hi, T.clk);
+      flush();
+      ctx.fillStyle = T.clk;
+      ctx.beginPath(); ctx.moveTo(x0, lo + 2); ctx.lineTo(x0 - 3, lo - 7); ctx.lineTo(x0 + 3, lo - 7); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(ex, hi - 2); ctx.lineTo(ex - 3, hi + 7); ctx.lineTo(ex + 3, hi + 7); ctx.closePath(); ctx.fill();
+      penX = x1; penY = hi;
       prev = 'n';
 
     } else if (ch === 'd' || ch === 'D' || ch === '=' || /^[2-9]$/.test(ch)) {
@@ -1096,7 +1612,7 @@ function drawWaveCanvas(ctx, sig, topY, CELL_W, T, slopeFrac = null) {
       const lbl = isLabel ? (data[di.i++] || '') : null;
       if (isLabel) curBusColor = /^[2-9]$/.test(ch) ? T.busColors[parseInt(ch) - 2] : T.bus;
       const isBusStart = prev !== 'd' && prev !== 'D' && prev !== '=' && !/^[2-9]$/.test(prev || '');
-      const isLabelBoundary = isLabel && !isBusStart;
+      const isLabelBoundary = isLabel && !isBusStart && !(i === 0 && phase > 0);
       const nextCh = resolved[i + 1] || null;
       const nextIsLabel = nextCh === null || (nextCh !== 'd' && nextCh !== 'D');
       const slope = slopeForCW(slopeFrac, CW), color = curBusColor;
@@ -1137,7 +1653,9 @@ function drawWaveCanvas(ctx, sig, topY, CELL_W, T, slopeFrac = null) {
 
       if (lbl) {
         const lx = (isBusStart || isLabelBoundary) ? x0 + slope : x0;
-        const rx = nextIsLabel ? railEnd : x1;
+        let runEnd = i;
+        while (runEnd + 1 < resolved.length && (resolved[runEnd + 1] === 'd' || resolved[runEnd + 1] === 'D')) runEnd++;
+        const rx = _bnd[runEnd + 1] - slope;
         ctx.fillStyle = color;
         ctx.font = `500 10px ${MONO}`; ctx.textAlign = 'center';
         ctx.fillText(lbl, (lx + rx) / 2, mid + 4); ctx.textAlign = 'left';
@@ -1148,6 +1666,92 @@ function drawWaveCanvas(ctx, sig, topY, CELL_W, T, slopeFrac = null) {
   }
 
   flush();
+}
+
+function measurePtXY(pt, signals, signalTopY, CELL_W, slopeFrac, periodNs = 0) {
+  const si = signals.findIndex(s => s?.name === pt.signal);
+  if (si < 0) return null;
+  const sig = signals[si];
+  const topY = signalTopY[si];
+  const hi = topY + 6, lo = topY + SIG_H - 6, mid = topY + SIG_H / 2;
+  const phase = sig.phase || 0, period = sig.period || 1;
+  const CW = CELL_W * period;
+  const nudgePx = periodNs > 0 ? (sig.nudge?.[String(pt.cycle)] ?? 0) / periodNs * CELL_W : 0;
+  const x0 = LABEL_W + (phase + pt.cycle * period) * CELL_W + nudgePx;
+  const bs = slopeForCW(slopeFrac, CW);
+  const nx = pt.anchor === 'e' ? x0 + CW - bs : pt.anchor === 's' ? x0 + bs : x0;
+  let ny = mid;
+  let isBusAnchor = false;
+  if (sig.wave) {
+    const res = resolveWave(sig.wave);
+    const ch = res[Math.floor(pt.cycle)] || '0';
+    const isBus = ch === 'd' || ch === 'D' || ch === '=' || /^[2-9]$/.test(ch);
+    if (isBus && (pt.anchor === 'e' || pt.anchor === 's')) {
+      ny = hi;
+      isBusAnchor = true;
+    } else {
+      const fy = levelY(ch, hi, lo, mid);
+      if (fy !== null) ny = fy;
+    }
+  }
+  return { x: nx, y: ny, si, hi, lo, isBusAnchor };
+}
+
+function drawMeasureAnnotations(ctx, spec, signals, signalTopY, CELL_W, T, slopeFrac, measHiRows = new Map(), measGapRows = new Map(), sameHiRows = new Map(), gapCounts = new Map(), periodNs = 0) {
+  if (!Array.isArray(spec.measure) || !spec.measure.length) return;
+  const measT = { ...T, edge: T.meas };
+
+  const _toNsR = { fs: 1e-6, ps: 1e-3, ns: 1, us: 1e3, ms: 1e6, s: 1e9 };
+  const _unit = (spec.timing?.unit || 'ns').toLowerCase();
+  const _fmtMeas = dx => {
+    const ns = Math.abs(dx) / CELL_W * periodNs;
+    const inUnit = ns / (_toNsR[_unit] || 1);
+    return parseFloat(inUnit.toPrecision(4)) + ' ' + _unit;
+  };
+
+  const hiGroups = new Map();
+  const gapGroups = new Map();
+
+  spec.measure.forEach(m => {
+    const pt1 = measurePtXY(m.p1, signals, signalTopY, CELL_W, slopeFrac, periodNs);
+    const pt2 = measurePtXY(m.p2, signals, signalTopY, CELL_W, slopeFrac, periodNs);
+    if (!pt1 || !pt2) return;
+    if (pt1.si !== pt2.si) {
+      if (pt1.isBusAnchor) pt1.y = pt1.si < pt2.si ? pt1.lo : pt1.hi;
+      if (pt2.isBusAnchor) pt2.y = pt2.si < pt1.si ? pt2.lo : pt2.hi;
+    }
+    const label = (m.showValue && periodNs > 0) ? _fmtMeas(pt2.x - pt1.x) : (m.label || '');
+    if (pt1.si === pt2.si) {
+      if (!hiGroups.has(pt1.si)) hiGroups.set(pt1.si, []);
+      hiGroups.get(pt1.si).push({ pt1, pt2, label });
+    } else {
+      const gapIdx = Math.max(pt1.si, pt2.si) - 1;
+      if (!gapGroups.has(gapIdx)) gapGroups.set(gapIdx, []);
+      gapGroups.get(gapIdx).push({ pt1, pt2, label });
+    }
+  });
+
+  hiGroups.forEach((brackets, si) => {
+    const ty = signalTopY[si];
+    const constraintOffset = sameHiRows.get(si) || 0;
+    const intervals = brackets.map(b => ({ x1: Math.min(b.pt1.x, b.pt2.x), x2: Math.max(b.pt1.x, b.pt2.x) }));
+    const rows = assignBracketRows(intervals);
+    brackets.forEach((b, j) => {
+      const midY = ty - DELAY_GAP * (constraintOffset + rows[j] + 0.5);
+      drawDelayBracket(ctx, b.pt1.x, b.pt1.y, b.pt2.x, b.pt2.y, midY, b.label, measT);
+    });
+  });
+
+  gapGroups.forEach((brackets, gapIdx) => {
+    const gapTop = signalTopY[gapIdx] + SIG_H;
+    const constraintOffset = gapCounts.get(gapIdx) || 0;
+    const intervals = brackets.map(b => ({ x1: Math.min(b.pt1.x, b.pt2.x), x2: Math.max(b.pt1.x, b.pt2.x) }));
+    const rows = assignBracketRows(intervals);
+    brackets.forEach((b, j) => {
+      const midY = gapTop + DELAY_GAP * (constraintOffset + rows[j] + 0.5);
+      drawDelayBracket(ctx, b.pt1.x, b.pt1.y, b.pt2.x, b.pt2.y, midY, b.label, measT);
+    });
+  });
 }
 
 function drawArrowCanvas(ctx, x1, y1, x2, y2, label, T) {
@@ -1206,7 +1810,7 @@ function drawDelayBracketSVG(els, x1, y1, x2, y2, midY, label, T) {
   }
 }
 
-function buildSVG(spec, signals, maxLen, CELL_W, W, H, T, signalTopY, gapAfter, gapCounts, sameHi, sameLo, slopeFrac) {
+function buildSVG(spec, signals, maxLen, CELL_W, W, H, T, signalTopY, gapAfter, gapCounts, sameHi, sameLo, slopeFrac, sameHiRows = new Map(), measHiRows = new Map(), measGapRows = new Map()) {
   if (!signalTopY) { signalTopY = signals.map((_, i) => HEAD_H + i * SIG_H); gapAfter = new Set(); }
   if (!gapCounts) gapCounts = new Map();
   if (!sameHi) sameHi = new Set();
@@ -1214,73 +1818,135 @@ function buildSVG(spec, signals, maxLen, CELL_W, W, H, T, signalTopY, gapAfter, 
   const els = [];
 
   els.push(_rect(0,0,W,H,T.bg));
-  els.push(`<defs><clipPath id="waveArea"><rect x="${LABEL_W}" y="${HEAD_H}" width="${W-LABEL_W}" height="${H-HEAD_H}"/></clipPath></defs>`);
+  els.push(`<defs><clipPath id="waveArea"><rect x="${LABEL_W}" y="${HEAD_H}" width="${maxLen * CELL_W}" height="${H-HEAD_H}"/></clipPath></defs>`);
 
   if (spec.title)
-    els.push(_tag('text',{x:LABEL_W,y:20,fill:T.title,'font-family':'"Inter",sans-serif','font-size':12,'font-weight':600},escXML(spec.title)));
+    els.push(_tag('text',{x:LABEL_W,y:16,fill:T.title,'font-family':'"Inter",sans-serif','font-size':12,'font-weight':600},escXML(spec.title)));
 
   const timing = spec.timing;
-  const hasTiming = !!(timing?.period > 0);
+  const _timingRes = timing?.resolution ?? timing?.period;
+  const hasTiming = !!(_timingRes > 0);
+  const _toNs = { fs: 1e-6, ps: 1e-3, ns: 1, us: 1e3, ms: 1e6, s: 1e9 };
+  const _diagUnit = (timing?.unit || 'ns').toLowerCase();
+  const periodNs = hasTiming ? _timingRes * (_toNs[_diagUnit] || 1) : 0;
+  const _unitScales = [['s',1e9],['ms',1e6],['µs',1e3],['ns',1],['ps',1e-3],['fs',1e-6]];
+  let _dispUnit = timing?.unit || 'ns', _dispScale = _toNs[_diagUnit] || 1;
+  if (hasTiming && periodNs > 0) {
+    const maxNs = periodNs * maxLen;
+    for (const [u, sc] of _unitScales) { if (maxNs / sc >= 0.99) { _dispUnit = u; _dispScale = sc; break; } }
+  }
+  const _step = hasTiming ? periodNs / _dispScale : 1;
+  const _dec = (_step > 0 && _step < 1) ? Math.min(6, Math.ceil(-Math.log10(_step + 1e-15))) : 0;
+  const _maxLabel = hasTiming ? (maxLen * periodNs / _dispScale).toFixed(_dec) : String(maxLen);
+  const _minTickPx = _maxLabel.length * 7 + 8;
+  let _tickInterval = 1;
+  { const _seq = [1,2,5]; let _mag = 1;
+    outer: for (;;) { for (const s of _seq) { if (s*_mag*CELL_W >= _minTickPx) { _tickInterval = s*_mag; break outer; } } _mag *= 10; if (_mag > 1e9) break; } }
 
   for (let i = 0; i <= maxLen; i++) {
     const x = LABEL_W + i * CELL_W;
     els.push(_line(x, HEAD_H, x, H - FOOT_H, i%2===0?T.gridL:T.grid, 1));
-    if (hasTiming) {
-      if (i > 0) els.push(_txt(x, HEAD_H-7, formatTimeLabel(i, timing.period), T.label, 10, 400, 'middle'));
-    } else {
-      if (i < maxLen) els.push(_txt(x + CELL_W/2, HEAD_H-7, String(i), T.label, 10, 400, 'middle'));
+    if (i > 0 && i % _tickInterval === 0) {
+      const lbl = hasTiming ? (i * periodNs / _dispScale).toFixed(_dec) : String(i);
+      els.push(_txt(x, HEAD_H-7, lbl, T.label, 10, 400, 'middle'));
     }
   }
-  els.push(_txt(4, HEAD_H-7, hasTiming ? (timing.unit || 'time') : 'Cycle', T.label, 10));
+  els.push(_txt(4, HEAD_H-7, hasTiming ? _dispUnit : 'Cycle', T.label, 10));
 
   els.push(_line(0,HEAD_H,W,HEAD_H,T.gridL,1));
   els.push(_line(LABEL_W,0,LABEL_W,H,T.gridL,1));
 
   signals.forEach((_,ri) => {
-    const y = signalTopY[ri] + SIG_H;
-    els.push(_line(LABEL_W,y,W,y,T.grid,0.5,'2 4'));
+    const y = signalTopY[ri];
+    if (y === null) return;
+    els.push(_line(LABEL_W,y+SIG_H,W,y+SIG_H,T.grid,0.5,'2 4'));
   });
+
+  const DCOLORS_HEX = ['#e06424','#24bc94','#c438ac','#acc420'];
+  const domainColor = new Map();
+  {
+    let di = 0;
+    signals.forEach((sig, ri) => {
+      if (!isGroupHdr(sig) || !sig.clock) return;
+      const hex = sig.clockColor || DCOLORS_HEX[di % DCOLORS_HEX.length]; di++;
+      const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+      domainColor.set(ri, { solid: hex, rgba: `rgba(${r},${g},${b},0.6)`, showLines: sig.clockLines !== false });
+    });
+  }
 
   const sigRowY = {};
   const waveEls = [];
   signals.forEach((sig, ri) => {
     const topY = signalTopY[ri];
+    if (topY === null || isGroupEnd(sig)) return;
+
+    if (isGroupHdr(sig)) {
+      els.push(_tag('rect',{x:0,y:topY,width:W,height:SIG_H,fill:T.grid+'55',stroke:'none'}));
+      const indicator = sig.collapsed ? '▶' : '▼';
+      els.push(_tag('text',{x:HANDLE_W+8,y:topY+SIG_H/2+4,fill:T.label,'font-family':'"Inter",sans-serif','font-size':11,'font-weight':600},escXML(indicator + '  ' + (sig.group || ''))));
+      if (sig.clock)
+        els.push(_tag('text',{x:W-10,y:topY+SIG_H/2+4,fill:domainColor.get(ri)?.solid||T.label,'font-family':'"Inter",sans-serif','font-size':9,'font-weight':500,'text-anchor':'end'},escXML('◎ ' + sig.clock)));
+      return;
+    }
+
     if (!sig?.name) {
       els.push(_line(LABEL_W+4,topY+SIG_H/2,W-4,topY+SIG_H/2,T.grid,0.5,'3 5')); return;
     }
     sigRowY[sig.name] = topY;
     els.push(_txt(LABEL_W-8, topY+SIG_H/2+4, sig.name, T.label, 11, 500, 'end'));
-    if (sig.wave) buildWaveSVG(waveEls, sig, topY, CELL_W, T, slopeFrac);
+    if (sig.wave) buildWaveSVG(waveEls, sig, topY, CELL_W, T, slopeFrac, periodNs);
   });
   els.push(`<g clip-path="url(#waveArea)">${waveEls.join('\n')}</g>`);
 
-  // ── nodeRail (cross-signal direction) ─────────────────────────────
-  const nodeRail = {};
-  if (Array.isArray(spec.edge) && spec.node) {
-    spec.edge.forEach(str => {
-      const m = str.match(/^([A-Za-z0-9]+)\s*[→>~-]+\s*([A-Za-z0-9]+)/);
-      if (!m) return;
-      const na = spec.node[m[1]], nb = spec.node[m[2]];
-      if (!na || !nb || na.signal === nb.signal) return;
-      const ia = signals.findIndex(s => s?.name === na.signal);
-      const ib = signals.findIndex(s => s?.name === nb.signal);
-      if (ia < 0 || ib < 0) return;
-      nodeRail[m[1]] = ib > ia ? 'lo' : 'hi';
-      nodeRail[m[2]] = ia > ib ? 'lo' : 'hi';
+  {
+    const domains = [];
+    const stack = [];
+    signals.forEach((sig, ri) => {
+      const topY = signalTopY[ri];
+      if (isGroupHdr(sig)) {
+        if (sig.clock) {
+          const dc = domainColor.get(ri);
+          const hdrBot = (topY ?? HEAD_H) + SIG_H;
+          const d = { color: dc?.rgba, period: sig.period || 1, showLines: dc?.showLines ?? true,
+            yTop: hdrBot, yBot: hdrBot };
+          stack.push(d); domains.push(d);
+        } else { stack.push(null); }
+        return;
+      }
+      if (isGroupEnd(sig)) { stack.pop(); return; }
+      const d = stack.length ? stack[stack.length - 1] : null;
+      if (d && topY !== null) d.yBot = topY + SIG_H;
     });
+    const domainLines = [];
+    domains.forEach(({ color, period, showLines, yTop, yBot }) => {
+      if (!showLines || yTop >= yBot) return;
+      for (let i = 1; i * period <= maxLen + period; i++) {
+        const x = LABEL_W + i * period * CELL_W;
+        if (x > LABEL_W && x <= LABEL_W + maxLen * CELL_W + 1)
+          domainLines.push(_line(x, yTop, x, yBot, color, 1));
+      }
+    });
+    if (domainLines.length) els.push(`<g>${domainLines.join('')}</g>`);
   }
 
-  // ── nodeXY ────────────────────────────────────────────────────────
-  const nodeXY = {};
-  if (spec.node) {
-    Object.entries(spec.node).forEach(([key, nd]) => {
-      const ty = sigRowY[nd.signal]; if (ty === undefined) return;
+  if (Array.isArray(spec.constraint)) {
+    const gapGroups = new Map();
+    const sameSigHiS = new Map();
+    const sameSigLoS = new Map();
+
+    const _toNsS = { fs: 1e-6, ps: 1e-3, ns: 1, us: 1e3, ms: 1e6, s: 1e9 };
+    const _diagUnitS = (spec.timing?.unit || 'ns').toLowerCase();
+
+    const _cptXYS = (nd, ndIdx, otherIdx) => {
+      const ty = signalTopY[ndIdx]; if (ty === null || ty === undefined) return null;
       const hi = ty+6, lo = ty+SIG_H-6, mid2 = ty+SIG_H/2;
-      const sigObj = signals.find(s => s?.name === nd.signal);
+      const sigObj = signals[ndIdx];
       const period2 = sigObj?.period || 1, phase2 = sigObj?.phase || 0;
       const CW2 = CELL_W * period2;
-      const x0 = LABEL_W + (phase2 + nd.cycle * period2) * CELL_W;
+      const nudgePx2 = periodNs > 0 ? (sigObj?.nudge?.[String(nd.cycle)] ?? 0) / periodNs * CELL_W : 0;
+      const x0 = LABEL_W + (phase2 + nd.cycle * period2) * CELL_W + nudgePx2;
       const busSlope = slopeForCW(slopeFrac, CW2);
+      const rail = otherIdx !== ndIdx ? (otherIdx > ndIdx ? 'lo' : 'hi') : null;
       let nx = x0, ny = mid2;
       if (sigObj?.wave) {
         const res = resolveWave(sigObj.wave);
@@ -1288,50 +1954,56 @@ function buildSVG(spec, signals, maxLen, CELL_W, W, H, T, signalTopY, gapAfter, 
         const isBus = ch==='d'||ch==='D'||ch==='='||/^[2-9]$/.test(ch);
         if (isBus && (nd.anchor === 'e' || nd.anchor === 's')) {
           nx = nd.anchor === 'e' ? x0 + CW2 - busSlope : x0 + busSlope;
-          ny = nodeRail[key] === 'lo' ? lo : hi;
+          ny = rail === 'lo' ? lo : hi;
         } else if (isBus) {
           const ci = Math.floor(nd.cycle);
           const prevCh = ci > 0 ? res[ci - 1] : null;
           const prevIsBus = prevCh && (prevCh==='d'||prevCh==='D'||prevCh==='='||/^[2-9]$/.test(prevCh));
           ny = (!prevIsBus && prevCh) ? (levelY(prevCh, hi, lo, mid2) ?? mid2) : mid2;
         } else {
-          const fy = levelY(ch, hi, lo, mid2);
-          ny = (fy !== null && fy !== mid2 && nodeRail[key]) ? (nodeRail[key] === 'lo' ? lo : hi) : (fy ?? mid2);
+          if (nd.anchor === 's') nx = x0 + busSlope;
+          else if (nd.anchor === 'e') nx = x0 + CW2 - busSlope;
+          const ci = Math.floor(nd.cycle);
+          let effectiveCh = ch;
+          if ('01hHlL'.includes(ch) && Number.isInteger(nd.cycle) && !nd.anchor) {
+            const prevCh = ci > 0 ? res[ci - 1] : null;
+            if (prevCh && '01hHlL'.includes(prevCh) && levelY(prevCh, hi, lo, mid2) !== levelY(ch, hi, lo, mid2))
+              effectiveCh = prevCh;
+          }
+          const fy = levelY(effectiveCh, hi, lo, mid2);
+          ny = rail ? (rail === 'lo' ? lo : hi) : (fy ?? mid2);
         }
       }
-      nodeXY[key] = {x: nx, y: ny, signal: nd.signal};
-      els.push(_tag('circle',{cx:nx,cy:ny,r:3,fill:T.edge}));
-    });
-  }
+      return {x: nx, y: ny, signal: nd.signal};
+    };
 
-  // ── edge routing + rendering ──────────────────────────────────────
-  if (Array.isArray(spec.edge)) {
-    const gapGroups   = new Map();
-    const sameSigHi   = new Map();
-    const sameSigLo   = new Map();
+    spec.constraint.forEach(c => {
+      if (!c?.p1 || !c?.p2) return;
+      const i1 = signals.findIndex(s => s?.name === c.p1.signal);
+      const i2 = signals.findIndex(s => s?.name === c.p2.signal);
+      if (i1 < 0 || i2 < 0) return;
+      const p1 = _cptXYS(c.p1, i1, i2), p2 = _cptXYS(c.p2, i2, i1);
+      if (!p1 || !p2) return;
 
-    spec.edge.forEach(str => {
-      const m = str.match(/^([A-Za-z0-9]+)\s*[→>~-]+\s*([A-Za-z0-9]+)\s*(.*)?$/);
-      if (!m) return;
-      const p1 = nodeXY[m[1]], p2 = nodeXY[m[2]]; if (!p1||!p2) return;
-      const lbl = m[3]?.trim() || '';
-      const isCross = p1.signal && p2.signal && p1.signal !== p2.signal;
-      if (isCross) {
-        const i1 = signals.findIndex(s => s?.name === p1.signal);
-        const i2 = signals.findIndex(s => s?.name === p2.signal);
+      els.push(_tag('circle',{cx:p1.x,cy:p1.y,r:3,fill:T.edge}));
+      els.push(_tag('circle',{cx:p2.x,cy:p2.y,r:3,fill:T.edge}));
+
+      const lbl = (c.showValue && c.value != null)
+        ? (parseFloat((c.value / (_toNsS[_diagUnitS] || 1)).toPrecision(4)) + ' ' + _diagUnitS)
+        : (c.label || '');
+
+      if (i1 !== i2) {
         const gapIdx = Math.max(i1, i2) - 1;
         if (!gapGroups.has(gapIdx)) gapGroups.set(gapIdx, []);
         gapGroups.get(gapIdx).push({ p1, p2, lbl });
       } else {
-        const si = signals.findIndex(s => s?.name === p1.signal);
-        if (sameHi.has(si)) {
-          if (!sameSigHi.has(si)) sameSigHi.set(si, []);
-          sameSigHi.get(si).push({ p1, p2, lbl });
-        } else if (sameLo.has(si)) {
-          if (!sameSigLo.has(si)) sameSigLo.set(si, []);
-          sameSigLo.get(si).push({ p1, p2, lbl });
+        if (sameHi.has(i1)) {
+          if (!sameSigHiS.has(i1)) sameSigHiS.set(i1, []);
+          sameSigHiS.get(i1).push({ p1, p2, lbl });
+        } else if (sameLo.has(i1)) {
+          if (!sameSigLoS.has(i1)) sameSigLoS.set(i1, []);
+          sameSigLoS.get(i1).push({ p1, p2, lbl });
         } else {
-          // diagonal arrow fallback
           els.push(_line(p1.x,p1.y,p2.x,p2.y,T.edge,1.2,'4 3'));
           const angle = Math.atan2(p2.y-p1.y,p2.x-p1.x), aL=8, aO=0.38;
           const pts = [`${p2.x},${p2.y}`,
@@ -1355,15 +2027,97 @@ function buildSVG(spec, signals, maxLen, CELL_W, W, H, T, signalTopY, gapAfter, 
       });
     };
 
-    renderBrackets(gapGroups,  gapIdx => signalTopY[gapIdx] + SIG_H, 1);
-    renderBrackets(sameSigHi,  si     => signalTopY[si],              -1);
-    renderBrackets(sameSigLo,  si     => signalTopY[si] + SIG_H,      1);
+    renderBrackets(gapGroups,   gapIdx => signalTopY[gapIdx] + SIG_H, 1);
+    renderBrackets(sameSigHiS,  si     => signalTopY[si],              -1);
+    renderBrackets(sameSigLoS,  si     => signalTopY[si] + SIG_H,      1);
+  }
+
+  if (Array.isArray(spec.measure) && spec.measure.length) {
+    const measT = { ...T, edge: T.meas };
+    const getPt = (pt) => {
+      const si = signals.findIndex(s => s?.name === pt.signal);
+      if (si < 0) return null;
+      const sig = signals[si];
+      const topY = signalTopY[si];
+      const hi = topY + 6, lo = topY + SIG_H - 6, mid = topY + SIG_H / 2;
+      const phase = sig.phase || 0, period = sig.period || 1;
+      const CW = CELL_W * period;
+      const nudgePxPt = periodNs > 0 ? (sig.nudge?.[String(pt.cycle)] ?? 0) / periodNs * CELL_W : 0;
+      const x0 = LABEL_W + (phase + pt.cycle * period) * CELL_W + nudgePxPt;
+      const bs = slopeForCW(slopeFrac, CW);
+      const nx = pt.anchor === 'e' ? x0 + CW - bs : pt.anchor === 's' ? x0 + bs : x0;
+      let ny = mid;
+      let isBusAnchor = false;
+      if (sig.wave) {
+        const res = resolveWave(sig.wave);
+        const ch = res[Math.floor(pt.cycle)] || '0';
+        const isBus = ch === 'd' || ch === 'D' || ch === '=' || /^[2-9]$/.test(ch);
+        if (isBus && (pt.anchor === 'e' || pt.anchor === 's')) {
+          ny = hi;
+          isBusAnchor = true;
+        } else {
+          const fy = levelY(ch, hi, lo, mid);
+          if (fy !== null) ny = fy;
+        }
+      }
+      return { x: nx, y: ny, si, hi, lo, isBusAnchor };
+    };
+
+    const _toNsS2 = { fs: 1e-6, ps: 1e-3, ns: 1, us: 1e3, ms: 1e6, s: 1e9 };
+    const _unitS = (spec.timing?.unit || 'ns').toLowerCase();
+    const _fmtMeasS = dx => {
+      const ns = Math.abs(dx) / CELL_W * periodNs;
+      const inUnit = ns / (_toNsS2[_unitS] || 1);
+      return parseFloat(inUnit.toPrecision(4)) + ' ' + _unitS;
+    };
+
+    const hiMeasGroups = new Map();
+    const gapMeasGroups = new Map();
+    spec.measure.forEach(m => {
+      const pt1 = getPt(m.p1), pt2 = getPt(m.p2);
+      if (!pt1 || !pt2) return;
+      if (pt1.si !== pt2.si) {
+        if (pt1.isBusAnchor) pt1.y = pt1.si < pt2.si ? pt1.lo : pt1.hi;
+        if (pt2.isBusAnchor) pt2.y = pt2.si < pt1.si ? pt2.lo : pt2.hi;
+      }
+      const label = (m.showValue && periodNs > 0) ? _fmtMeasS(pt2.x - pt1.x) : (m.label || '');
+      if (pt1.si === pt2.si) {
+        if (!hiMeasGroups.has(pt1.si)) hiMeasGroups.set(pt1.si, []);
+        hiMeasGroups.get(pt1.si).push({ pt1, pt2, label });
+      } else {
+        const gapIdx = Math.max(pt1.si, pt2.si) - 1;
+        if (!gapMeasGroups.has(gapIdx)) gapMeasGroups.set(gapIdx, []);
+        gapMeasGroups.get(gapIdx).push({ pt1, pt2, label });
+      }
+    });
+
+    hiMeasGroups.forEach((brackets, si) => {
+      const ty = signalTopY[si];
+      const constraintOffset = sameHiRows.get(si) || 0;
+      const intervals = brackets.map(b => ({ x1: Math.min(b.pt1.x, b.pt2.x), x2: Math.max(b.pt1.x, b.pt2.x) }));
+      const rows = assignBracketRows(intervals);
+      brackets.forEach((b, j) => {
+        const midY = ty - DELAY_GAP * (constraintOffset + rows[j] + 0.5);
+        drawDelayBracketSVG(els, b.pt1.x, b.pt1.y, b.pt2.x, b.pt2.y, midY, b.label, measT);
+      });
+    });
+
+    gapMeasGroups.forEach((brackets, gapIdx) => {
+      const gapTop = signalTopY[gapIdx] + SIG_H;
+      const constraintOffset = gapCounts.get(gapIdx) || 0;
+      const intervals = brackets.map(b => ({ x1: Math.min(b.pt1.x, b.pt2.x), x2: Math.max(b.pt1.x, b.pt2.x) }));
+      const rows = assignBracketRows(intervals);
+      brackets.forEach((b, j) => {
+        const midY = gapTop + DELAY_GAP * (constraintOffset + rows[j] + 0.5);
+        drawDelayBracketSVG(els, b.pt1.x, b.pt1.y, b.pt2.x, b.pt2.y, midY, b.label, measT);
+      });
+    });
   }
 
   return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">\n${els.join('\n')}\n</svg>`;
 }
 
-function buildWaveSVG(els, sig, topY, CELL_W, T, slopeFrac = null) {
+function buildWaveSVG(els, sig, topY, CELL_W, T, slopeFrac = null, periodNs = 0) {
   const hi = topY+6, lo = topY+SIG_H-6, mid = topY+SIG_H/2;
   const period = sig.period || 1;
   const phase  = sig.phase  || 0;
@@ -1386,32 +2140,82 @@ function buildWaveSVG(els, sig, topY, CELL_W, T, slopeFrac = null) {
     const fillX1 = LABEL_W + phase * CELL_W;
     if      (firstCh === '0' || firstCh === 'l' || firstCh === 'L') { hln(LABEL_W, fillX1, lo, T.low); lastY = lo; }
     else if (firstCh === '1' || firstCh === 'h' || firstCh === 'H') { hln(LABEL_W, fillX1, hi, T.high); lastY = hi; }
-    else if (firstCh === 'p' || firstCh === 'P')                    { hln(LABEL_W, fillX1, lo, T.clk); lastY = lo; }
-    else if (firstCh === 'n' || firstCh === 'N')                    { hln(LABEL_W, fillX1, hi, T.clk); lastY = hi; }
-    else if (firstCh === 'z' || firstCh === 'Z')                    { hln(LABEL_W, fillX1, mid, T.z, '5 3'); lastY = mid; }
+    else if (firstCh === 'p' || firstCh === 'P') {
+      const numCells = Math.ceil(phase / period);
+      for (let k = 1; k <= numCells; k++) {
+        const cx0 = fillX1 - k * CW, cex = cx0 + CW / 2, cx1 = cx0 + CW;
+        vln(cx0, lo, hi, T.clk); hln(cx0, cex, hi, T.clk); vln(cex, hi, lo, T.clk); hln(cex, cx1, lo, T.clk);
+        if (firstCh === 'P') els.push(_tag('polygon', {points:`${cx0},${hi-2} ${cx0-3},${hi+7} ${cx0+3},${hi+7}`, fill:T.clk}));
+      }
+      lastY = lo;
+    } else if (firstCh === 'n' || firstCh === 'N') {
+      const numCells = Math.ceil(phase / period);
+      for (let k = 1; k <= numCells; k++) {
+        const cx0 = fillX1 - k * CW, cex = cx0 + CW / 2, cx1 = cx0 + CW;
+        vln(cx0, hi, lo, T.clk); hln(cx0, cex, lo, T.clk); vln(cex, lo, hi, T.clk); hln(cex, cx1, hi, T.clk);
+        if (firstCh === 'N') els.push(_tag('polygon', {points:`${cx0},${lo+2} ${cx0-3},${lo-7} ${cx0+3},${lo-7}`, fill:T.clk}));
+      }
+      lastY = hi;
+    } else if (firstCh === 'Q') {
+      const numCellsQ = Math.ceil(phase / period);
+      for (let k = 1; k <= numCellsQ; k++) {
+        const cx0 = fillX1 - k * CW, cex = cx0 + CW / 2, cx1 = cx0 + CW;
+        vln(cx0, lo, hi, T.clk); hln(cx0, cex, hi, T.clk); vln(cex, hi, lo, T.clk); hln(cex, cx1, lo, T.clk);
+        els.push(_tag('polygon', {points:`${cx0},${hi-2} ${cx0-3},${hi+7} ${cx0+3},${hi+7}`, fill:T.clk}));
+        els.push(_tag('polygon', {points:`${cex},${lo+2} ${cex-3},${lo-7} ${cex+3},${lo-7}`, fill:T.clk}));
+      }
+      lastY = lo;
+    } else if (firstCh === 'R') {
+      const numCellsR = Math.ceil(phase / period);
+      for (let k = 1; k <= numCellsR; k++) {
+        const cx0 = fillX1 - k * CW, cex = cx0 + CW / 2, cx1 = cx0 + CW;
+        vln(cx0, hi, lo, T.clk); hln(cx0, cex, lo, T.clk); vln(cex, lo, hi, T.clk); hln(cex, cx1, hi, T.clk);
+        els.push(_tag('polygon', {points:`${cx0},${lo+2} ${cx0-3},${lo-7} ${cx0+3},${lo-7}`, fill:T.clk}));
+        els.push(_tag('polygon', {points:`${cex},${hi-2} ${cex-3},${hi+7} ${cex+3},${hi+7}`, fill:T.clk}));
+      }
+      lastY = hi;
+    } else if (firstCh === 'z' || firstCh === 'Z')                    { hln(LABEL_W, fillX1, mid, T.z, '5 3'); lastY = mid; }
+    else if (firstCh === 'd' || firstCh === 'D' || firstCh === '=' || /^[2-9]$/.test(firstCh)) {
+      const bc = /^[2-9]$/.test(firstCh) ? T.busColors[parseInt(firstCh) - 2] : T.bus;
+      curBusColor = bc;
+      els.push(_tag('rect', { x: LABEL_W, y: hi, width: fillX1 - LABEL_W, height: lo - hi, fill: bc + '1a', stroke: 'none' }));
+      hln(LABEL_W, fillX1, hi, bc); hln(LABEL_W, fillX1, lo, bc);
+      lastY = hi; prev = 'd';
+    }
   }
+
+  const _bnd = [];
+  for (let j = 0; j <= resolved.length; j++)
+    _bnd[j] = LABEL_W + (phase + j * period) * CELL_W + (periodNs > 0 ? (sig.nudge?.[String(j)] ?? 0) / periodNs * CELL_W : 0);
+  for (let j = resolved.length - 1; j >= 0; j--)
+    if (_bnd[j] > _bnd[j + 1]) _bnd[j] = _bnd[j + 1];
 
   for (let i = 0; i < resolved.length; i++) {
     const ch = resolved[i];
-    const x0 = LABEL_W + (phase + i * period) * CELL_W, x1 = x0 + CW;
+    const x0 = _bnd[i], x1 = _bnd[i + 1];
+    if (x1 <= x0) continue;
 
     if (ch==='1'||ch==='h'||ch==='H') {
-      const fy=lastY!==null?lastY:levelY(prev,hi,lo,mid); if(fy!==null&&fy!==hi) vln(x0,fy,hi,T.high);
-      hln(x0,x1,hi,T.high); lastY=hi; prev='1';
+      const fy=lastY!==null?lastY:levelY(prev,hi,lo,mid);
+      if (fy!==null&&fy!==hi) { const bs=slopeFrac!=null?slope:0; els.push(_line(x0,fy,x0+bs,hi,T.high,sw)); hln(x0+bs,x1,hi,T.high); }
+      else hln(x0,x1,hi,T.high);
+      lastY=hi; prev='1';
 
     } else if (ch==='0'||ch==='l'||ch==='L') {
-      const fy=lastY!==null?lastY:levelY(prev,hi,lo,mid); if(fy!==null&&fy!==lo) vln(x0,fy,lo,T.low);
-      hln(x0,x1,lo,T.low); lastY=lo; prev='0';
+      const fy=lastY!==null?lastY:levelY(prev,hi,lo,mid);
+      if (fy!==null&&fy!==lo) { const bs=slopeFrac!=null?slope:0; els.push(_line(x0,fy,x0+bs,lo,T.low,sw)); hln(x0+bs,x1,lo,T.low); }
+      else hln(x0,x1,lo,T.low);
+      lastY=lo; prev='0';
 
     } else if (ch==='z'||ch==='Z') {
       const fy=lastY!==null?lastY:levelY(prev,hi,lo,mid); if(fy!==null&&fy!==mid) vln(x0,fy,mid,T.z);
-      hln(x0,x1,mid,T.z,'5 3'); lastY=mid; prev='z';
+      hln(x0,Math.max(x0,x1),mid,T.z,'5 3'); lastY=mid; prev='z';
 
     } else if (ch==='x'||ch==='X') {
       let xEnd = i;
       while (xEnd + 1 < resolved.length && (resolved[xEnd + 1] === 'x' || resolved[xEnd + 1] === 'X')) xEnd++;
-      const runX0 = (i === 0 && phase > 0) ? LABEL_W : x0;
-      const runX1 = LABEL_W + (phase + (xEnd + 1) * period) * CELL_W;
+      const runX0 = (i === 0 && phase > 0) ? LABEL_W : _bnd[i];
+      const runX1 = _bnd[xEnd + 1];
       const prevState = prev;
       const nextState = xEnd + 1 < resolved.length ? resolved[xEnd + 1] : null;
       const entryFromLogic = prevState && '01hHlLpn'.includes(prevState);
@@ -1450,25 +2254,45 @@ function buildWaveSVG(els, sig, topY, CELL_W, T, slopeFrac = null) {
       i = xEnd; lastY = exitToLogic ? levelY(nextState, hi, lo, mid) : mid; prev = 'x';
 
     } else if (ch==='p'||ch==='P') {
-      const ex=x0+CW/2;
-      const fy=lastY!==null?lastY:levelY(prev,hi,lo,mid); if(fy!==null&&fy!==lo) vln(x0,fy,lo,T.clk);
-      hln(x0,ex,lo,T.clk); vln(ex,lo,hi,T.clk); hln(ex,x1,hi,T.clk);
-      if(ch==='P') els.push(_tag('polygon',{points:`${ex},${hi-2} ${ex-3},${hi+7} ${ex+3},${hi+7}`,fill:T.clk}));
-      lastY=hi; prev='p';
+      const ex=(x0+x1)/2;
+      const fy=(lastY!==null?lastY:levelY(prev,hi,lo,mid))??lo;
+      if(fy!==hi) vln(x0,fy,hi,T.clk);
+      hln(x0,ex,hi,T.clk); vln(ex,hi,lo,T.clk); hln(ex,x1,lo,T.clk);
+      if(ch==='P') els.push(_tag('polygon',{points:`${x0},${hi-2} ${x0-3},${hi+7} ${x0+3},${hi+7}`,fill:T.clk}));
+      lastY=lo; prev='p';
 
     } else if (ch==='n'||ch==='N') {
-      const ex=x0+CW/2;
-      const fy=lastY!==null?lastY:levelY(prev,hi,lo,mid); if(fy!==null&&fy!==hi) vln(x0,fy,hi,T.clk);
+      const ex=(x0+x1)/2;
+      const fy=(lastY!==null?lastY:levelY(prev,hi,lo,mid))??hi;
+      if(fy!==lo) vln(x0,fy,lo,T.clk);
+      hln(x0,ex,lo,T.clk); vln(ex,lo,hi,T.clk); hln(ex,x1,hi,T.clk);
+      if(ch==='N') els.push(_tag('polygon',{points:`${x0},${lo+2} ${x0-3},${lo-7} ${x0+3},${lo-7}`,fill:T.clk}));
+      lastY=hi; prev='n';
+
+    } else if (ch==='Q') {
+      const ex=(x0+x1)/2;
+      const fy=(lastY!==null?lastY:levelY(prev,hi,lo,mid))??lo;
+      if(fy!==hi) vln(x0,fy,hi,T.clk);
       hln(x0,ex,hi,T.clk); vln(ex,hi,lo,T.clk); hln(ex,x1,lo,T.clk);
-      if(ch==='N') els.push(_tag('polygon',{points:`${ex},${lo+2} ${ex-3},${lo-7} ${ex+3},${lo-7}`,fill:T.clk}));
-      lastY=lo; prev='n';
+      els.push(_tag('polygon',{points:`${x0},${hi-2} ${x0-3},${hi+7} ${x0+3},${hi+7}`,fill:T.clk}));
+      els.push(_tag('polygon',{points:`${ex},${lo+2} ${ex-3},${lo-7} ${ex+3},${lo-7}`,fill:T.clk}));
+      lastY=lo; prev='p';
+
+    } else if (ch==='R') {
+      const ex=(x0+x1)/2;
+      const fy=(lastY!==null?lastY:levelY(prev,hi,lo,mid))??hi;
+      if(fy!==lo) vln(x0,fy,lo,T.clk);
+      hln(x0,ex,lo,T.clk); vln(ex,lo,hi,T.clk); hln(ex,x1,hi,T.clk);
+      els.push(_tag('polygon',{points:`${x0},${lo+2} ${x0-3},${lo-7} ${x0+3},${lo-7}`,fill:T.clk}));
+      els.push(_tag('polygon',{points:`${ex},${hi-2} ${ex-3},${hi+7} ${ex+3},${hi+7}`,fill:T.clk}));
+      lastY=hi; prev='n';
 
     } else if (ch==='d'||ch==='D'||ch==='='||/^[2-9]$/.test(ch)) {
       const isLabel=ch==='='||/^[2-9]$/.test(ch);
       const lbl=isLabel?(data[di.i++]||''):null;
       if(isLabel) curBusColor=/^[2-9]$/.test(ch)?T.busColors[parseInt(ch)-2]:T.bus;
       const isNew=prev!=='d'&&prev!=='D'&&prev!=='='&&!/^[2-9]$/.test(prev||'');
-      const isLabelBoundary = isLabel && !isNew;
+      const isLabelBoundary = isLabel && !isNew && !(i === 0 && phase > 0);
       const nextCh = resolved[i + 1] || null;
       const isEnd = nextCh === null || (nextCh !== 'd' && nextCh !== 'D');
       const entryY = isNew ? (lastY !== null ? lastY : (levelY(prev,hi,lo,mid) ?? mid)) : mid;
@@ -1488,7 +2312,10 @@ function buildWaveSVG(els, sig, topY, CELL_W, T, slopeFrac = null) {
       els.push(_tag('polyline',{points:bot.map(p=>p.join(',')).join(' '),stroke:color,'stroke-width':sw,fill:'none','stroke-linecap':'square'}));
       if(lbl){
         const lx=isNew||isLabelBoundary?x0+slope:x0;
-        els.push(_tag('text',{x:(lx+railEnd)/2,y:mid+4,fill:color,'font-family':'"Roboto Mono", monospace','font-size':10,'font-weight':500,'text-anchor':'middle'},escXML(lbl)));
+        let runEnd=i;
+        while(runEnd+1<resolved.length&&(resolved[runEnd+1]==='d'||resolved[runEnd+1]==='D')) runEnd++;
+        const rx=_bnd[runEnd+1]-slope;
+        els.push(_tag('text',{x:(lx+rx)/2,y:mid+4,fill:color,'font-family':'"Roboto Mono", monospace','font-size':10,'font-weight':500,'text-anchor':'middle'},escXML(lbl)));
       }
       lastY = isEnd ? exitY2 : null;
       prev=isLabel?ch:'d';
@@ -1497,27 +2324,51 @@ function buildWaveSVG(els, sig, topY, CELL_W, T, slopeFrac = null) {
 }
 
 // ───── js/export.js ─────
-function exportPNG(spec, themeName, scale) {
+function _renderPNG(spec, themeName, scale, minH = 0, maxLenOverride = null) {
   const T = THEMES[themeName] || THEMES.light;
   const hscale = spec.config?.hscale || 1;
-  const { signals, maxLen, CELL_W, W, H, signalTopY, gapAfter, gapCounts, sameHi, sameLo, slopeFrac } = geometry(spec, hscale);
+  const geo = geometry(spec, hscale);
+  if (maxLenOverride !== null) {
+    geo.maxLen = Math.max(1, maxLenOverride);
+    geo.W = Math.max(LABEL_W + geo.maxLen * geo.CELL_W + PAD_R, 300);
+  }
+  const { signals, maxLen, CELL_W, W, signalTopY, gapAfter, gapCounts, sameHi, sameLo, slopeFrac, sameHiRows, measHiRows, measGapRows } = geo;
+  const H = Math.max(geo.H, minH);
   const canvas = document.createElement('canvas');
   canvas.width = W * scale; canvas.height = H * scale;
   const ctx = canvas.getContext('2d');
   ctx.scale(scale, scale);
   ctx.fillStyle = T.bg; ctx.fillRect(0, 0, W, H);
-  drawAll(ctx, T, spec, signals, maxLen, CELL_W, W, H, signalTopY, gapAfter, gapCounts, sameHi, sameLo, slopeFrac);
+  drawAll(ctx, T, spec, signals, maxLen, CELL_W, W, H, signalTopY, gapAfter, gapCounts, sameHi, sameLo, slopeFrac, measHiRows, measGapRows, sameHiRows);
+  return canvas.toDataURL('image/png');
+}
+
+function exportPNG(spec, themeName, scale, minH = 0, maxLenOverride = null) {
   const a = document.createElement('a');
   a.download = 'timing_diagram.png';
-  a.href = canvas.toDataURL('image/png');
+  a.href = _renderPNG(spec, themeName, scale, minH, maxLenOverride);
   a.click();
 }
 
-function exportSVG(spec, themeName) {
+function previewPNG(spec, themeName, scale, minH = 0, maxLenOverride = null) {
+  const win = window.open('', '_blank');
+  if (!win) return;
+  const dataUrl = _renderPNG(spec, themeName, scale, minH, maxLenOverride);
+  win.document.write(`<!doctype html><html><head><title>Preview</title><style>body{margin:0;background:#111;display:flex;justify-content:center;align-items:flex-start;padding:16px;box-sizing:border-box}img{max-width:100%;height:auto;display:block}</style></head><body><img src="${dataUrl}"></body></html>`);
+  win.document.close();
+}
+
+function exportSVG(spec, themeName, minH = 0, maxLenOverride = null) {
   const T = THEMES[themeName] || THEMES.light;
   const hscale = spec.config?.hscale || 1;
-  const { signals, maxLen, CELL_W, W, H, signalTopY, gapAfter, gapCounts, sameHi, sameLo, slopeFrac } = geometry(spec, hscale);
-  const svgStr = buildSVG(spec, signals, maxLen, CELL_W, W, H, T, signalTopY, gapAfter, gapCounts, sameHi, sameLo, slopeFrac);
+  const geo = geometry(spec, hscale);
+  if (maxLenOverride !== null) {
+    geo.maxLen = Math.max(1, maxLenOverride);
+    geo.W = Math.max(LABEL_W + geo.maxLen * geo.CELL_W + PAD_R, 300);
+  }
+  const { signals, maxLen, CELL_W, W, signalTopY, gapAfter, gapCounts, sameHi, sameLo, slopeFrac, sameHiRows, measHiRows, measGapRows } = geo;
+  const H = Math.max(geo.H, minH);
+  const svgStr = buildSVG(spec, signals, maxLen, CELL_W, W, H, T, signalTopY, gapAfter, gapCounts, sameHi, sameLo, slopeFrac, sameHiRows, measHiRows, measGapRows);
   const blob = new Blob([svgStr], { type: 'image/svg+xml' });
   const a = document.createElement('a');
   a.download = 'timing_diagram.svg';
@@ -1527,47 +2378,127 @@ function exportSVG(spec, themeName) {
 
 // ───── js/app.js ─────
 const DEFAULT = `{
-  "title": "Diagram",
-  "config": {
-    "hscale": 2
-  },
-  "timing": {
-    "unit": "ns",
-    "period": 10
-  },
+  "config": { "hscale": 2 },
   "signal": [
-    {
-      "name": "CLK",
-      "wave": "P..................0"
-    }
-  ],
-  "edge": ["A→B tCLK"],
-  "node": {
-    "A": {
-      "signal": "CLK",
-      "cycle": 1.5
-    },
-    "B": {
-      "signal": "CLK",
-      "cycle": 2.5
-    }
-  }
+    { "name": "clock", "wave": "PPPPPPPP" }
+  ]
 }`;
+
+// ─── History ───────────────────────────────────────────────────────────────────
+const _hist = [];
+let _histIdx = -1;
+let _inUndoRedo = false;
+let _dirty = false;
+
+function pushHistory() {
+  if (_inUndoRedo || !workingSpec) return;
+  const s = JSON.stringify(workingSpec);
+  if (_histIdx >= 0 && _hist[_histIdx] === s) return;
+  _hist.splice(_histIdx + 1);
+  _hist.push(s);
+  if (_hist.length > 100) _hist.shift(); else _histIdx++;
+  _dirty = true;
+  _syncUndoRedo();
+  _updateSaveBtn();
+}
+
+function undo() {
+  if (_histIdx <= 0) return;
+  _inUndoRedo = true;
+  _histIdx--;
+  workingSpec = JSON.parse(_hist[_histIdx]);
+  syncEditorFromSpec(); render();
+  _syncUndoRedo();
+  _inUndoRedo = false;
+}
+
+function redo() {
+  if (_histIdx >= _hist.length - 1) return;
+  _inUndoRedo = true;
+  _histIdx++;
+  workingSpec = JSON.parse(_hist[_histIdx]);
+  syncEditorFromSpec(); render();
+  _syncUndoRedo();
+  _inUndoRedo = false;
+}
+
+function _syncUndoRedo() {
+  document.getElementById('miUndo').classList.toggle('dis', _histIdx <= 0);
+  document.getElementById('miRedo').classList.toggle('dis', _histIdx >= _hist.length - 1);
+}
+
+function _updateSaveBtn() {
+  document.getElementById('miSave').textContent = _dirty ? '↧ Save ·' : '↧ Save';
+}
+
+function saveDiagram() {
+  const title = workingSpec?.title || 'diagram';
+  const filename = title.replace(/[^a-zA-Z0-9_\-]/g, '_').replace(/_+/g, '_') + '.json';
+  const blob = new Blob([JSON.stringify(workingSpec, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  _dirty = false;
+  _updateSaveBtn();
+}
+
+function openDiagram() {
+  document.getElementById('fileOpenInput').click();
+}
+
+let _pendingDropFile = null;
+
+function _loadFile(file) {
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const spec = JSON.parse(ev.target.result);
+      migrateConstraints(spec);
+      workingSpec = spec;
+      zoom = spec.config?.zoom || 1.0;
+      _hist.length = 0; _histIdx = -1;
+      syncEditorFromSpec(); render();
+      _hist.push(JSON.stringify(workingSpec)); _histIdx = 0;
+      _dirty = false; _syncUndoRedo(); _updateSaveBtn();
+    } catch(err) {
+      errorBar.textContent = '⚠ Could not open file: ' + err.message;
+      errorBar.classList.add('visible');
+    }
+  };
+  reader.readAsText(file);
+}
+
+function _confirmLoadFile(file) {
+  if (_dirty) {
+    _pendingDropFile = file;
+    document.getElementById('dirtyConfirmModal').style.display = 'flex';
+  } else {
+    _loadFile(file);
+  }
+}
 
 // ─── State ─────────────────────────────────────────────────────────────────────
 let zoom = 1.0;
 let activeTool = 'pointer';
 let cursorPos = null;
 let measureAnchor = null;
+let measureAnchorPoint = null;
 let annotateAnchor = null;
 let pendingConstraint = null;
 let cellEditTarget = null;
 let _cellEditorJustShown = false;
 let workingSpec = null;
 let _geo = null;
-let hitRegions = { handles: [], labels: [], waves: [], edges: [] };
+let userDiagramH = 0;
+let userMaxLen = null;
+let hitRegions = { handles: [], labels: [], waves: [], edges: [], measures: [], groups: [] };
 const drag = { active: false, type: null, idx: -1, startX: 0, startY: 0, curX: 0, curY: 0, origPhase: 0, started: false };
 let dragPhaseOverride = null;
+let hoverCell = null;
+let _paintDrag = { active: false, sigIdx: -1, startCell: -1, endCell: -1 };
+let _suppressNextClick = false;
 let renderTimer;
 
 // ─── DOM refs ──────────────────────────────────────────────────────────────────
@@ -1579,14 +2510,90 @@ const edPane         = document.getElementById('editorPane');
 const divider        = document.getElementById('divider');
 const addSignalModal = document.getElementById('addSignalModal');
 const ctxMenu        = document.getElementById('ctxMenu');
+const resizeHandle   = document.getElementById('diagramResizeHandle');
+const rightHandle    = document.getElementById('diagramRightHandle');
+
+// ─── Diagram height resize ──────────────────────────────────────────────────────
+{
+  const rd = { active: false, startY: 0, startH: 0 };
+  resizeHandle.addEventListener('mousedown', e => {
+    e.preventDefault();
+    rd.active = true;
+    rd.startY = e.clientY;
+    rd.startH = _geo ? _geo.H : (userDiagramH || 120);
+    resizeHandle.classList.add('active');
+    document.body.style.cursor = 'ns-resize';
+  });
+  document.addEventListener('mousemove', e => {
+    if (!rd.active) return;
+    const minH = _geo ? _geo.contentH : 120;
+    userDiagramH = Math.max(minH, rd.startH + (e.clientY - rd.startY));
+    render();
+  });
+  document.addEventListener('mouseup', () => {
+    if (!rd.active) return;
+    rd.active = false;
+    resizeHandle.classList.remove('active');
+    document.body.style.cursor = '';
+  });
+}
+
+// ─── Diagram width resize ──────────────────────────────────────────────────────
+{
+  const rr = { active: false, startX: 0, startMaxLen: 0 };
+  rightHandle.addEventListener('mousedown', e => {
+    e.preventDefault();
+    rr.active = true;
+    rr.startX = e.clientX;
+    rr.startMaxLen = _geo ? _geo.maxLen : (userMaxLen || 8);
+    rightHandle.classList.add('active');
+    document.body.style.cursor = 'ew-resize';
+  });
+  document.addEventListener('mousemove', e => {
+    if (!rr.active) return;
+    const cw = _geo ? _geo.CELL_W : 40;
+    const delta = Math.round((e.clientX - rr.startX) / cw);
+    userMaxLen = Math.max(1, rr.startMaxLen + delta);
+    render();
+  });
+  document.addEventListener('mouseup', () => {
+    if (!rr.active) return;
+    rr.active = false;
+    rightHandle.classList.remove('active');
+    document.body.style.cursor = '';
+  });
+}
 
 // ─── Init ──────────────────────────────────────────────────────────────────────
-sourceEl.value = localStorage.getItem('wavetool_source') || DEFAULT;
+sourceEl.value = DEFAULT;
 
 // ─── Spec management ───────────────────────────────────────────────────────────
+function migrateConstraints(spec) {
+  if (!Array.isArray(spec.edge) || !spec.node) return false;
+  if (!spec.constraint) spec.constraint = [];
+  spec.edge.forEach(str => {
+    const m = str.match(/^([A-Za-z0-9]+)\s*[^A-Za-z0-9\s]+\s*([A-Za-z0-9]+)\s*(.*)?$/);
+    if (!m) return;
+    const na = spec.node[m[1]], nb = spec.node[m[2]];
+    if (!na || !nb) return;
+    const label = m[3]?.trim() || undefined;
+    const entry = { p1: { ...na }, p2: { ...nb } };
+    if (label) {
+      entry.label = label;
+      const val = spec.constraints?.[label];
+      if (val != null) entry.value = val;
+      if (spec.constraintShowValue?.[label]) entry.showValue = true;
+    }
+    spec.constraint.push(entry);
+  });
+  delete spec.edge; delete spec.node; delete spec.constraints; delete spec.constraintShowValue;
+  return true;
+}
+
 function parseSpecFromEditor() {
   try {
     workingSpec = parseSpec(sourceEl.value);
+    if (migrateConstraints(workingSpec)) syncEditorFromSpec();
     errorBar.textContent = ''; errorBar.classList.remove('visible');
     return true;
   } catch(e) {
@@ -1598,7 +2605,6 @@ function parseSpecFromEditor() {
 
 function syncEditorFromSpec() {
   sourceEl.value = formatSpec(workingSpec);
-  localStorage.setItem('wavetool_source', sourceEl.value);
 }
 
 // ─── Render ────────────────────────────────────────────────────────────────────
@@ -1615,13 +2621,26 @@ function render() {
   const T = THEMES.dark;
   const hscale = (spec.config?.hscale || 1) * zoom;
   const geo = geometry(spec, hscale);
-  const { signals, maxLen, CELL_W, W, H, signalTopY, gapAfter, gapCounts, sameHi, sameLo } = geo;
+  if (userMaxLen !== null) {
+    geo.maxLen = Math.max(1, userMaxLen);
+    geo.W = Math.max(LABEL_W + geo.maxLen * geo.CELL_W + PAD_R, 300);
+  }
+  const { signals, maxLen, CELL_W, W, signalTopY, gapAfter, gapCounts, sameHi, sameLo } = geo;
+  const contentH = geo.H;
+  const H = Math.max(contentH, userDiagramH);
+  geo.H = H;
+  geo.contentH = contentH;
   _geo = geo;
 
-  hitRegions.handles = []; hitRegions.labels = []; hitRegions.waves = []; hitRegions.edges = [];
+  hitRegions.handles = []; hitRegions.labels = []; hitRegions.waves = []; hitRegions.edges = []; hitRegions.measures = []; hitRegions.groups = [];
   signals.forEach((sig, i) => {
     const ty = signalTopY[i];
+    if (ty === null || isGroupEnd(sig)) return;
     hitRegions.handles.push({ idx: i, x: 0, y: ty, w: HANDLE_W, h: SIG_H });
+    if (isGroupHdr(sig)) {
+      hitRegions.groups.push({ idx: i, x: HANDLE_W, y: ty, w: W - HANDLE_W, h: SIG_H });
+      return;
+    }
     if (!sig?.name) return;
     hitRegions.labels.push({ idx: i, x: HANDLE_W, y: ty, w: LABEL_W - HANDLE_W, h: SIG_H });
     hitRegions.waves .push({ idx: i, x: LABEL_W,  y: ty, w: W - LABEL_W,        h: SIG_H });
@@ -1629,33 +2648,93 @@ function render() {
 
   waveCanvas.width = W; waveCanvas.height = H;
   cursorCanvas.width = W; cursorCanvas.height = H;
+  resizeHandle.style.width = W + 'px';
   const ctx = waveCanvas.getContext('2d');
   ctx.fillStyle = T.bg; ctx.fillRect(0, 0, W, H);
-  drawAll(ctx, T, spec, signals, maxLen, CELL_W, W, H, signalTopY, gapAfter, gapCounts, sameHi, sameLo, _geo.slopeFrac);
+  drawAll(ctx, T, spec, signals, maxLen, CELL_W, W, H, signalTopY, gapAfter, gapCounts, sameHi, sameLo, _geo.slopeFrac, _geo.measHiRows, _geo.measGapRows, _geo.sameHiRows);
   hitRegions.edges = computeEdgeHitRegions();
+  hitRegions.measures = computeMeasureHitRegions();
 
   signals.forEach((sig, i) => {
-    if (!sig?.name) return;
-    const my = signalTopY[i] + SIG_H / 2;
+    const ty = signalTopY[i];
+    if (ty === null || isGroupEnd(sig)) return;
+    if (!sig?.name && !isGroupHdr(sig)) return;
+    const my = ty + SIG_H / 2;
     ctx.fillStyle = drag.active && drag.type === 'row' && drag.idx === i ? '#6a7898' : '#3a4258';
     [-3, 0, 3].forEach(dy => ctx.fillRect(3, my + dy - 0.6, 8, 1.2));
   });
 
   if (drag.active && drag.type === 'row') {
-    ctx.fillStyle = 'rgba(77,142,240,0.08)';
-    ctx.fillRect(0, signalTopY[drag.idx], W, SIG_H);
+    const dragTy = signalTopY[drag.idx];
+    if (dragTy !== null) {
+      ctx.fillStyle = 'rgba(77,142,240,0.08)';
+      ctx.fillRect(0, dragTy, W, SIG_H);
+    }
     const ins = computeInsertionIdx(drag.curY);
-    const lineY = ins <= 0 ? signalTopY[0]
-                : ins >= signals.length ? signalTopY[signals.length - 1] + SIG_H
-                : signalTopY[ins];
-    ctx.strokeStyle = '#4d8ef0'; ctx.lineWidth = 2; ctx.setLineDash([]);
-    ctx.beginPath(); ctx.moveTo(0, lineY); ctx.lineTo(W, lineY); ctx.stroke();
+    let lineY = null;
+    if (ins <= 0) lineY = signalTopY.find(y => y !== null) ?? HEAD_H;
+    else if (ins >= signals.length) {
+      for (let j = signals.length - 1; j >= 0; j--) { if (signalTopY[j] !== null) { lineY = signalTopY[j] + SIG_H; break; } }
+    } else {
+      if (signalTopY[ins] !== null) { lineY = signalTopY[ins]; }
+      else {
+        for (let j = ins + 1; j < signals.length; j++) { if (signalTopY[j] !== null) { lineY = signalTopY[j]; break; } }
+        if (lineY === null) for (let j = ins - 1; j >= 0; j--) { if (signalTopY[j] !== null) { lineY = signalTopY[j] + SIG_H; break; } }
+      }
+    }
+    if (lineY !== null) {
+      ctx.strokeStyle = '#4d8ef0'; ctx.lineWidth = 2; ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(0, lineY); ctx.lineTo(W, lineY); ctx.stroke();
+    }
   }
 }
 
 // ─── Zoom ──────────────────────────────────────────────────────────────────────
-function zoomIn()  { zoom = Math.min(zoom * 1.25, 6);   render(); }
-function zoomOut() { zoom = Math.max(zoom / 1.25, 0.3); render(); }
+let _rulerZoomDrag = null;
+
+function _saveZoom() {
+  if (!workingSpec) return;
+  if (!workingSpec.config) workingSpec.config = {};
+  workingSpec.config.zoom = parseFloat(zoom.toPrecision(4));
+  syncEditorFromSpec(); _dirty = true; _updateSaveBtn();
+}
+function zoomIn()  { zoom = Math.min(zoom * 1.25, 6);   _saveZoom(); render(); }
+function zoomOut() { zoom = Math.max(zoom / 1.25, 0.3); _saveZoom(); render(); }
+
+function zoomFit() {
+  if (!workingSpec || !_geo) return;
+  const pane = document.getElementById('canvasPane');
+  // 40px padding (20 each side) + 2px canvas border = 42px; add 4px safety
+  const availW = pane.clientWidth - 46;
+  if (availW <= 0) return;
+  const maxLen = _geo.maxLen;
+  if (maxLen <= 0) return;
+  const baseHscale = workingSpec.config?.hscale || 1;
+  // Floor so CELL_W * maxLen never exceeds available space after rounding
+  const targetCellPx = Math.floor((availW - LABEL_W - PAD_R) / maxLen);
+  zoom = Math.max(0.001, Math.min(6, targetCellPx / 40 / baseHscale));
+  _saveZoom(); render();
+  document.getElementById('diagramScrollX').scrollLeft = 0;
+}
+
+function zoomToRange(canvasX1, canvasX2) {
+  if (!workingSpec || !_geo) return;
+  const x1 = Math.min(canvasX1, canvasX2), x2 = Math.max(canvasX1, canvasX2);
+  if (x2 - x1 < 8) { zoomIn(); return; }
+  const pane = document.getElementById('canvasPane');
+  const availW = pane.clientWidth - 44;
+  if (availW <= 0) return;
+  const { CELL_W } = _geo;
+  const c1 = Math.max(0, (x1 - LABEL_W) / CELL_W);
+  const c2 = (x2 - LABEL_W) / CELL_W;
+  if (c2 - c1 <= 0) return;
+  const baseHscale = workingSpec.config?.hscale || 1;
+  const targetCellPx = (availW - LABEL_W - PAD_R) / (c2 - c1);
+  zoom = Math.max(0.05, Math.min(6, targetCellPx / 40 / baseHscale));
+  _saveZoom(); render();
+  const newCELL_W = Math.round(40 * baseHscale * zoom);
+  document.getElementById('diagramScrollX').scrollLeft = Math.max(0, LABEL_W + c1 * newCELL_W - 20);
+}
 
 // ─── Export modal ──────────────────────────────────────────────────────────────
 function openExportModal() { document.getElementById('exportModal').style.display = 'flex'; }
@@ -1665,13 +2744,20 @@ function doExportPNG() {
   if (!workingSpec) return;
   const theme = document.getElementById('exportTheme').value;
   const scale = parseInt(document.getElementById('pngScale').value) || 1;
-  exportPNG(workingSpec, theme, scale);
+  exportPNG(workingSpec, theme, scale, userDiagramH, userMaxLen);
   closeExportModal();
+}
+
+function doPreviewPNG() {
+  if (!workingSpec) return;
+  const theme = document.getElementById('exportTheme').value;
+  const scale = parseInt(document.getElementById('pngScale').value) || 1;
+  previewPNG(workingSpec, theme, scale, userDiagramH, userMaxLen);
 }
 
 function doExportSVG() {
   if (!workingSpec) return;
-  exportSVG(workingSpec, document.getElementById('exportTheme').value);
+  exportSVG(workingSpec, document.getElementById('exportTheme').value, userDiagramH, userMaxLen);
   closeExportModal();
 }
 
@@ -1680,13 +2766,14 @@ function toggleJSON() {
   const hidden = edPane.style.display === 'none';
   edPane.style.display   = hidden ? 'flex' : 'none';
   divider.style.display  = hidden ? 'block' : 'none';
-  document.getElementById('btnToggleJSON').classList.toggle('tool-active', hidden);
+  document.getElementById('miToggleJSON').classList.toggle('checked', hidden);
   localStorage.setItem('wavetool_json_visible', hidden ? '1' : '0');
 }
 
 // ─── Tool management ───────────────────────────────────────────────────────────
 function setTool(tool) {
   activeTool = tool;
+  hoverCell = null;
   document.getElementById('btnPointer') .classList.toggle('tool-active', tool === 'pointer');
   document.getElementById('btnSelect')  .classList.toggle('tool-active', tool === 'select');
   document.getElementById('btnMeasure') .classList.toggle('tool-active', tool === 'measure');
@@ -1700,27 +2787,40 @@ function setTool(tool) {
 function edgesForSig(sig) {
   if (!sig?.wave || !_geo) return [];
   const { CELL_W, slopeFrac } = _geo;
+  const periodNs = getPeriodNs();
   const period = sig.period || 1, phase = sig.phase || 0;
   const CW = CELL_W * period;
   const slope = slopeForCW(slopeFrac, CW);
   const res = resolveWave(sig.wave);
   const isBusChar = ch => ch === 'd' || ch === 'D' || ch === '=' || /^[2-9]$/.test(ch);
+  const _nud = j => periodNs > 0 ? (sig.nudge?.[String(j)] ?? 0) / periodNs * CELL_W : 0;
+  const _bnd = [];
+  for (let j = 0; j <= res.length; j++)
+    _bnd[j] = LABEL_W + (phase + j * period) * CELL_W + _nud(j);
+  for (let j = 1; j <= res.length; j++)
+    if (_bnd[j] < _bnd[j - 1]) _bnd[j] = _bnd[j - 1];
   const edges = [];
   for (let i = 0; i <= res.length; i++) {
-    const x0 = LABEL_W + (phase + i * period) * CELL_W;
+    const x0 = _bnd[i];
     edges.push(x0);
     if (i < res.length) {
+      const x1 = _bnd[i + 1];
       const ch = res[i];
-      if ('pPnN'.includes(ch)) edges.push(x0 + CW / 2);
+      if ('pPnNQR'.includes(ch)) edges.push((x0 + x1) / 2);
       if (isBusChar(ch) && ch !== 'd' && ch !== 'D') {
-        // start of stable data region (after entry chamfer)
         edges.push(x0 + slope);
       }
       if (isBusChar(ch)) {
         const chNext = i + 1 < res.length ? res[i + 1] : null;
         if (!chNext || (chNext !== 'd' && chNext !== 'D')) {
-          // end of stable data region (before exit chamfer)
-          edges.push(x0 + CW - slope);
+          edges.push(x1 - slope);
+        }
+      }
+      // bit-signal slope: snap to end-of-slope (start of stable level)
+      if (slopeFrac != null && '01hHlL'.includes(ch) && i > 0) {
+        const prevCh = res[i - 1];
+        if (levelY(prevCh, 2, 0, 1) !== levelY(ch, 2, 0, 1)) {
+          edges.push(x0 + slope);
         }
       }
     }
@@ -1730,14 +2830,16 @@ function edgesForSig(sig) {
 
 function findNearestEdge(x, y) {
   if (!workingSpec || !_geo) return null;
-  const { signals, signalTopY, CELL_W } = _geo;
+  const { signals, signalTopY, CELL_W, slopeFrac } = _geo;
+  const snapPeriodNs = getPeriodNs();
   const SNAP_R = 8;
 
   // Find hovered signal row
   let hovSig = null;
   if (y !== undefined) {
     for (let i = 0; i < signals.length; i++) {
-      if (y >= signalTopY[i] && y < signalTopY[i] + SIG_H && signals[i]?.wave) {
+      const ty = signalTopY[i];
+      if (ty !== null && y >= ty && y < ty + SIG_H && signals[i]?.wave) {
         hovSig = signals[i]; break;
       }
     }
@@ -1750,18 +2852,20 @@ function findNearestEdge(x, y) {
       const d = Math.abs(x - ex);
       if (d < bestD) { bestD = d; best = ex; }
     }
-    if (workingSpec.node) {
-      for (const nd of Object.values(workingSpec.node)) {
-        if (nd.signal !== hovSig.name) continue;
-        const nx = nodeXApprox(nd, signals, CELL_W);
-        const d = Math.abs(x - nx);
-        if (d < bestD) { bestD = d; best = nx; }
+    if (workingSpec.constraint) {
+      for (const c of workingSpec.constraint) {
+        for (const nd of [c.p1, c.p2]) {
+          if (!nd || nd.signal !== hovSig.name) continue;
+          const nx = nodeXApprox(nd, signals, CELL_W, slopeFrac, snapPeriodNs);
+          const d = Math.abs(x - nx);
+          if (d < bestD) { bestD = d; best = nx; }
+        }
       }
     }
     if (best !== null) return best;
   }
 
-  // Fall back: all signals + all nodes at normal radius
+  // Fall back: all signals + all constraint nodes at normal radius
   let best = null, bestD = SNAP_R;
   for (const sig of (workingSpec.signal || [])) {
     if (sig === hovSig) continue;
@@ -1770,22 +2874,122 @@ function findNearestEdge(x, y) {
       if (d < bestD) { bestD = d; best = ex; }
     }
   }
-  if (workingSpec.node) {
-    for (const nd of Object.values(workingSpec.node)) {
-      const nx = nodeXApprox(nd, signals, CELL_W);
-      const d = Math.abs(x - nx);
-      if (d < bestD) { bestD = d; best = nx; }
+  if (workingSpec.constraint) {
+    for (const c of workingSpec.constraint) {
+      for (const nd of [c.p1, c.p2]) {
+        if (!nd) continue;
+        const nx = nodeXApprox(nd, signals, CELL_W, slopeFrac, snapPeriodNs);
+        const d = Math.abs(x - nx);
+        if (d < bestD) { bestD = d; best = nx; }
+      }
     }
   }
   return best;
 }
 
 function timeLabelFromFrac(frac) {
-  if (workingSpec?.timing?.period > 0) {
-    const t = frac * workingSpec.timing.period;
+  const res = workingSpec?.timing?.resolution ?? workingSpec?.timing?.period;
+  if (res > 0) {
+    const t = frac * res;
     return parseFloat(t.toPrecision(5)) + ' ' + (workingSpec.timing.unit || '');
   }
   return 't=' + parseFloat(frac.toPrecision(4));
+}
+
+function drawCellHover(ctx, sigIdx, cellIdx) {
+  if (!_geo || !workingSpec) return;
+  const sig = workingSpec.signal[sigIdx];
+  if (!sig?.wave) return;
+  const { CELL_W, signalTopY, maxLen, slopeFrac, H } = _geo;
+  const topY = signalTopY[sigIdx];
+  const period = sig.period || 1;
+  const phase  = sig.phase  || 0;
+  const CW = CELL_W * period;
+  const bnd = sigBoundaries(sig);
+  const x0 = bnd[cellIdx], x1 = bnd[cellIdx + 1] ?? x0 + CW;
+  const hi  = topY + 6;
+  const lo  = topY + SIG_H - 6;
+  const mid = topY + SIG_H / 2;
+
+  const res = resolveWave(sig.wave);
+  const ch = res[cellIdx];
+  if (!ch) {
+    ctx.save();
+    ctx.beginPath(); ctx.rect(LABEL_W, HEAD_H, maxLen * CELL_W, H - HEAD_H); ctx.clip();
+    ctx.fillStyle = 'rgba(255,255,255,0.10)';
+    ctx.fillRect(x0, topY + 1, x1 - x0, SIG_H - 2);
+    ctx.restore();
+    return;
+  }
+
+  const isBusChar = c => c === 'd' || c === 'D' || c === '=' || /^[2-9]$/.test(c);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(LABEL_W, HEAD_H, maxLen * CELL_W, H - HEAD_H);
+  ctx.clip();
+
+  ctx.fillStyle = 'rgba(255,255,255,0.10)';
+
+  const prev = cellIdx > 0              ? res[cellIdx - 1] : null;
+  const next = cellIdx + 1 < res.length ? res[cellIdx + 1] : null;
+  const slope = slopeForCW(slopeFrac, CW);
+
+  if (isBusChar(ch)) {
+    const isLabel = ch === '=' || /^[2-9]$/.test(ch);
+    const isBusStart      = !isBusChar(prev || '');
+    const isLabelBoundary = isLabel && !isBusStart && !(cellIdx === 0 && phase > 0);
+    const nextIsEnd       = !next || (next !== 'd' && next !== 'D');
+    const entryY = isBusStart ? (levelY(prev, hi, lo, mid) ?? mid) : mid;
+    const exitY  = nextIsEnd  ? (levelY(next, hi, lo, mid) ?? mid) : mid;
+    const railEnd = nextIsEnd ? x1 - slope : x1;
+
+    ctx.beginPath();
+    if (isBusStart || isLabelBoundary) { ctx.moveTo(x0, entryY); ctx.lineTo(x0 + slope, hi); }
+    else                               { ctx.moveTo(x0, hi); }
+    ctx.lineTo(railEnd, hi);
+    if (nextIsEnd) { ctx.lineTo(x1, exitY); ctx.lineTo(railEnd, lo); }
+    else           { ctx.lineTo(x1, lo); }
+    if (isBusStart || isLabelBoundary) { ctx.lineTo(x0 + slope, lo); ctx.lineTo(x0, entryY); }
+    else                               { ctx.lineTo(x0, lo); }
+    ctx.closePath();
+    ctx.fill();
+
+  } else if (ch === 'x' || ch === 'X') {
+    const isXStart = !prev || (prev !== 'x' && prev !== 'X');
+    const isXEnd   = !next || (next !== 'x' && next !== 'X');
+    const entryFromLogic = isXStart && prev && '01hHlLpPnNQR'.includes(prev);
+    const exitToLogic    = isXEnd   && next && '01hHlLpPnNQR'.includes(next);
+
+    const topPts = [], botPts = [];
+    if (isXStart) {
+      const fy = entryFromLogic ? (levelY(prev, hi, lo, mid) ?? mid) : mid;
+      topPts.push([x0, fy], [x0 + slope, hi]);
+      botPts.push([x0, fy], [x0 + slope, lo]);
+    } else {
+      topPts.push([x0, hi]);
+      botPts.push([x0, lo]);
+    }
+    if (isXEnd) {
+      const ty = exitToLogic ? (levelY(next, hi, lo, mid) ?? mid) : mid;
+      topPts.push([x1 - slope, hi], [x1, ty]);
+      botPts.push([x1 - slope, lo], [x1, ty]);
+    } else {
+      topPts.push([x1, hi]);
+      botPts.push([x1, lo]);
+    }
+
+    ctx.beginPath();
+    topPts.forEach(([px, py], j) => j === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py));
+    [...botPts].reverse().forEach(([px, py]) => ctx.lineTo(px, py));
+    ctx.closePath();
+    ctx.fill();
+
+  } else {
+    ctx.fillRect(x0, topY, CW, SIG_H);
+  }
+
+  ctx.restore();
 }
 
 function drawCursorPill(ctx, x, label, W, above = true) {
@@ -1804,8 +3008,32 @@ function drawCursorPill(ctx, x, label, W, above = true) {
 function renderCursor() {
   const ctx = cursorCanvas.getContext('2d');
   ctx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
-  if (!cursorPos || !_geo) return;
+  if (!_geo) return;
   const { CELL_W, W, H } = _geo;
+
+  if (_rulerZoomDrag) {
+    const lx = Math.min(_rulerZoomDrag.x1, _rulerZoomDrag.x2);
+    const rx = Math.max(_rulerZoomDrag.x1, _rulerZoomDrag.x2);
+    ctx.fillStyle = 'rgba(77,142,240,0.28)';
+    ctx.fillRect(lx, 0, rx - lx, HEAD_H);
+    ctx.strokeStyle = '#4d8ef0';
+    ctx.lineWidth = 1; ctx.setLineDash([]);
+    ctx.strokeRect(lx + 0.5, 0.5, rx - lx - 1, HEAD_H - 1);
+    ctx.fillStyle = 'rgba(77,142,240,0.06)';
+    ctx.fillRect(lx, HEAD_H, rx - lx, H - HEAD_H);
+    return;
+  }
+
+  if (hoverCell !== null && activeTool === 'pointer') {
+    if (hoverCell.cellRange) {
+      for (let _i = hoverCell.cellRange[0]; _i <= hoverCell.cellRange[1]; _i++)
+        drawCellHover(ctx, hoverCell.sigIdx, _i);
+    } else {
+      drawCellHover(ctx, hoverCell.sigIdx, hoverCell.cellIdx);
+    }
+  }
+
+  if (!cursorPos) return;
 
   if (activeTool === 'measure') {
     if (cursorPos.x < LABEL_W || cursorPos.x > W) return;
@@ -1858,7 +3086,8 @@ function snapToConstraintPoint(pos) {
   const { signals, signalTopY, CELL_W, slopeFrac } = _geo;
   let sigIdx = -1;
   for (let i = 0; i < signals.length; i++) {
-    if (pos.y >= signalTopY[i] && pos.y < signalTopY[i] + SIG_H && signals[i]?.name && signals[i]?.wave) {
+    const ty = signalTopY[i];
+    if (ty !== null && pos.y >= ty && pos.y < ty + SIG_H && signals[i]?.name && signals[i]?.wave) {
       sigIdx = i; break;
     }
   }
@@ -1878,10 +3107,17 @@ function snapToConstraintPoint(pos) {
   const entryY = ch => 'pP'.includes(ch) ? lo : 'nN'.includes(ch) ? hi : (levelY(ch, hi, lo, mid) ?? mid);
   const exitY  = ch => levelY(ch, hi, lo, mid) ?? mid;
 
+  const periodNs = getPeriodNs();
+  const _nud = j => periodNs > 0 ? (sig.nudge?.[String(j)] ?? 0) / periodNs * CELL_W : 0;
+  const _bndC = [];
+  for (let j = 0; j <= res.length; j++)
+    _bndC[j] = LABEL_W + (phase + j * period) * CELL_W + _nud(j);
+  for (let j = 1; j <= res.length; j++)
+    if (_bndC[j] < _bndC[j - 1]) _bndC[j] = _bndC[j - 1];
   const pts = [];
 
   for (let i = 0; i <= res.length; i++) {
-    const x = LABEL_W + (phase + i * period) * CELL_W;
+    const x = _bndC[i];
     const chR = i < res.length ? res[i]     : null;
     const chL = i > 0          ? res[i - 1] : null;
 
@@ -1900,6 +3136,7 @@ function snapToConstraintPoint(pos) {
     }
 
     if (i < res.length) {
+      const x1 = _bndC[i + 1];
       // Bus-start trapezoid slope (anchor 's') — at start of each new bus segment
       if (isBusLabel(chR)) {
         pts.push({ signal: sig.name, cycle: i, anchor: 's', x: x + slope, y: hi });
@@ -1908,15 +3145,23 @@ function snapToConstraintPoint(pos) {
       if (chR && isBusChar(chR)) {
         const chNext = i + 1 < res.length ? res[i + 1] : null;
         if (!chNext || (chNext !== 'd' && chNext !== 'D')) {
-          pts.push({ signal: sig.name, cycle: i, anchor: 'e', x: x + CW - slope, y: hi });
+          pts.push({ signal: sig.name, cycle: i, anchor: 'e', x: x1 - slope, y: hi });
         }
       }
       // Clock mid-cell transition point
       if (chR && 'pP'.includes(chR)) {
-        pts.push({ signal: sig.name, cycle: i + 0.5, x: x + CW / 2, y: hi });
+        pts.push({ signal: sig.name, cycle: i + 0.5, x: (x + x1) / 2, y: hi });
       }
       if (chR && 'nN'.includes(chR)) {
-        pts.push({ signal: sig.name, cycle: i + 0.5, x: x + CW / 2, y: lo });
+        pts.push({ signal: sig.name, cycle: i + 0.5, x: (x + x1) / 2, y: lo });
+      }
+      // Bit-signal slope end (start of stable level) when trise is configured
+      if (slopeFrac != null && chR && '01hHlL'.includes(chR) && chL && !isBusChar(chL)) {
+        const fromLv = levelY(chL, hi, lo, mid);
+        const toLv   = levelY(chR, hi, lo, mid);
+        if (fromLv !== null && toLv !== null && fromLv !== toLv) {
+          pts.push({ signal: sig.name, cycle: i, anchor: 's', x: x + slope, y: toLv });
+        }
       }
     }
   }
@@ -1930,59 +3175,160 @@ function snapToConstraintPoint(pos) {
   return best;
 }
 
-function nextNodeKey() {
-  const used = new Set(Object.keys(workingSpec.node || {}));
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-  for (const c of chars) if (!used.has(c)) return c;
-  let n = 0; while (used.has('n' + n)) n++; return 'n' + n;
+function _addConstraintRaw(anchor, target, label) {
+  if (!workingSpec) return;
+  if (!workingSpec.constraint) workingSpec.constraint = [];
+  const entry = { p1: { signal: anchor.signal, cycle: anchor.cycle }, p2: { signal: target.signal, cycle: target.cycle } };
+  if (anchor.anchor) entry.p1.anchor = anchor.anchor;
+  if (target.anchor) entry.p2.anchor = target.anchor;
+  if (label) entry.label = label;
+  workingSpec.constraint.push(entry);
 }
 
-function addConstraint(anchor, target, label) {
+function parseConstraintValueNs(str) {
+  const m = str.trim().match(/^([0-9]*\.?[0-9]+)\s*(fs|ps|ns|us|ms|s)?$/i);
+  if (!m) return null;
+  const val = parseFloat(m[1]);
+  const userUnit = (m[2] || workingSpec?.timing?.unit || 'ns').toLowerCase();
+  const toNs = { fs: 1e-6, ps: 1e-3, ns: 1, us: 1e3, ms: 1e6, s: 1e9 };
+  return val * (toNs[userUnit] || 1);
+}
+
+function formatConstraintValue(valueNs) {
+  const unit = (workingSpec?.timing?.unit || 'ns').toLowerCase();
+  const toNs = { fs: 1e-6, ps: 1e-3, ns: 1, us: 1e3, ms: 1e6, s: 1e9 };
+  return String(parseFloat((valueNs / (toNs[unit] || 1)).toPrecision(10))) + ' ' + unit;
+}
+
+function isClockSignal(sig) {
+  if (!sig?.wave) return false;
+  return resolveWave(sig.wave).some(ch => 'pPnNQR'.includes(ch));
+}
+
+function getPeriodNs() {
+  const timing = workingSpec?.timing;
+  const res = timing?.resolution ?? timing?.period;
+  if (!res || res <= 0) return 0;
+  const toNs = { fs: 1e-6, ps: 1e-3, ns: 1, us: 1e3, ms: 1e6, s: 1e9 };
+  return res * (toNs[(timing.unit || 'ns').toLowerCase()] || 1);
+}
+
+function parseTimeToNs(str) {
+  const _toNs = { fs: 1e-6, ps: 1e-3, ns: 1, us: 1e3, ms: 1e6, s: 1e9 };
+  const m = String(str).trim().match(/^([\d.eE+\-]+)\s*([a-zA-Zµ]*)\s*$/);
+  if (!m) return NaN;
+  const val = parseFloat(m[1]);
+  const unit = m[2].toLowerCase().replace('µ', 'u') || (workingSpec?.timing?.unit || 'ns').toLowerCase();
+  return val * (_toNs[unit] || 1);
+}
+
+function anchorOffsetCells(anchorType, period, slopeFrac) {
+  const sf = slopeFrac ?? 0;
+  if (anchorType === 's') return sf * period;
+  if (anchorType === 'e') return period * (1 - sf);
+  return 0;
+}
+
+function applyConstraintValue(anchorNode, targetNode, valueNs) {
+  const anchorSig = workingSpec.signal.find(s => s?.name === anchorNode.signal);
+  const targetSig = workingSpec.signal.find(s => s?.name === targetNode.signal);
+  if (!anchorSig || !targetSig || anchorNode.signal === targetNode.signal) return false;
+  const timing = workingSpec?.timing;
+  const diagUnit = (timing?.unit || 'ns').toLowerCase();
+  const diagPeriod = timing?.resolution ?? timing?.period ?? 0;
+  if (diagPeriod <= 0) return false;
+  const toNs = { fs: 1e-6, ps: 1e-3, ns: 1, us: 1e3, ms: 1e6, s: 1e9 };
+  const periodNs = diagPeriod * (toNs[diagUnit] || 1);
+  const slopeFrac = (timing?.trise > 0 && diagPeriod > 0) ? Math.min(0.45, timing.trise / diagPeriod) : null;
+  const anchorPeriod = anchorSig.period || 1, targetPeriod = targetSig.period || 1;
+  const anchorOff = anchorOffsetCells(anchorNode.anchor, anchorPeriod, slopeFrac);
+  const targetOff = anchorOffsetCells(targetNode.anchor, targetPeriod, slopeFrac);
+  // Anchor absolute position in ns (including any nudge on the anchor edge)
+  const anchorNudgeNs = anchorSig.nudge?.[String(anchorNode.cycle)] ?? 0;
+  const anchorPosNs = ((anchorSig.phase || 0) + anchorNode.cycle * anchorPeriod + anchorOff) * periodNs + anchorNudgeNs;
+  const desiredNs = anchorPosNs + valueNs;
+  if (isClockSignal(targetSig)) {
+    // Clock: phase shifts whole signal uniformly — include any existing nudge at the target edge
+    const targetNudgeNs = targetSig.nudge?.[String(targetNode.cycle)] ?? 0;
+    const newPhase = (desiredNs - targetNudgeNs) / periodNs - targetNode.cycle * targetPeriod - targetOff;
+    const rounded = Math.round(newPhase * 10000) / 10000;
+    if (Math.abs(rounded) < 0.0001) delete targetSig.phase; else targetSig.phase = rounded;
+  } else {
+    // Data: nudge the specific edge; phase unchanged
+    const targetBaseNs = ((targetSig.phase || 0) + targetNode.cycle * targetPeriod + targetOff) * periodNs;
+    const nudgeNs = desiredNs - targetBaseNs;
+    const rounded = Math.round(nudgeNs * 10000) / 10000;
+    const key = String(targetNode.cycle);
+    if (!targetSig.nudge) targetSig.nudge = {};
+    if (Math.abs(rounded) < 0.0001) {
+      delete targetSig.nudge[key];
+      if (Object.keys(targetSig.nudge).length === 0) delete targetSig.nudge;
+    } else {
+      targetSig.nudge[key] = rounded;
+    }
+  }
+  return true;
+}
+
+function propagateConstraints(startSignal) {
+  if (!Array.isArray(workingSpec?.constraint)) return;
+  const MAX_ITERS = 20;
+  const inQueue = new Set([startSignal]);
+  const queue = [startSignal];
+  let iter = 0;
+  while (queue.length && iter++ < MAX_ITERS) {
+    const anchorName = queue.shift();
+    inQueue.delete(anchorName);
+    for (const c of workingSpec.constraint) {
+      if (!c?.p1 || !c?.p2 || c.value == null) continue;
+      if (c.p1.signal !== anchorName) continue;
+      const tSig = workingSpec.signal.find(s => s?.name === c.p2.signal);
+      if (!tSig) continue;
+      const prevVal = isClockSignal(tSig) ? (tSig.phase ?? 0) : (tSig.nudge?.[String(c.p2.cycle)] ?? 0);
+      if (!applyConstraintValue(c.p1, c.p2, c.value)) continue;
+      const newVal = isClockSignal(tSig) ? (tSig.phase ?? 0) : (tSig.nudge?.[String(c.p2.cycle)] ?? 0);
+      if (Math.abs(newVal - prevVal) > 0.0001 && !inQueue.has(c.p2.signal)) {
+        inQueue.add(c.p2.signal);
+        queue.push(c.p2.signal);
+      }
+    }
+  }
+}
+
+function addMeasure(anchor, target, label, showValue) {
   if (!workingSpec) return;
-  if (!workingSpec.node) workingSpec.node = {};
-  if (!workingSpec.edge) workingSpec.edge = [];
-  const k1 = nextNodeKey();
-  const nd1 = { signal: anchor.signal, cycle: anchor.cycle };
-  if (anchor.anchor) nd1.anchor = anchor.anchor;
-  workingSpec.node[k1] = nd1;
-  const k2 = nextNodeKey();
-  const nd2 = { signal: target.signal, cycle: target.cycle };
-  if (target.anchor) nd2.anchor = target.anchor;
-  workingSpec.node[k2] = nd2;
-  workingSpec.edge.push(label ? `${k1}→${k2} ${label}` : `${k1}→${k2}`);
-  syncEditorFromSpec();
-  render();
+  if (!workingSpec.measure) workingSpec.measure = [];
+  const entry = { p1: { signal: anchor.signal, cycle: anchor.cycle }, p2: { signal: target.signal, cycle: target.cycle } };
+  if (anchor.anchor) entry.p1.anchor = anchor.anchor;
+  if (target.anchor) entry.p2.anchor = target.anchor;
+  if (label) entry.label = label;
+  if (showValue) entry.showValue = true;
+  workingSpec.measure.push(entry);
+  syncEditorFromSpec(); render(); pushHistory();
+}
+
+function deleteMeasure(idx) {
+  if (!workingSpec?.measure) return;
+  workingSpec.measure.splice(idx, 1);
+  if (!workingSpec.measure.length) delete workingSpec.measure;
+  syncEditorFromSpec(); render(); pushHistory();
 }
 
 function computeEdgeHitRegions() {
-  if (!workingSpec?.edge || !_geo) return [];
+  if (!Array.isArray(workingSpec?.constraint) || !_geo) return [];
   const { signals, signalTopY, CELL_W, sameHi, sameLo, slopeFrac } = _geo;
+  const periodNs = getPeriodNs();
 
-  const sigRowY = {};
-  signals.forEach((sig, i) => { if (sig?.name) sigRowY[sig.name] = signalTopY[i]; });
-
-  const nodeRail = {};
-  workingSpec.edge.forEach(str => {
-    const m = str.match(/^([A-Za-z0-9]+)\s*[→>~-]+\s*([A-Za-z0-9]+)/);
-    if (!m) return;
-    const na = workingSpec.node?.[m[1]], nb = workingSpec.node?.[m[2]];
-    if (!na || !nb || na.signal === nb.signal) return;
-    const ia = signals.findIndex(s => s?.name === na.signal);
-    const ib = signals.findIndex(s => s?.name === nb.signal);
-    if (ia < 0 || ib < 0) return;
-    nodeRail[m[1]] = ib > ia ? 'lo' : 'hi';
-    nodeRail[m[2]] = ia > ib ? 'lo' : 'hi';
-  });
-
-  const nodeXY = {};
-  Object.entries(workingSpec.node || {}).forEach(([key, nd]) => {
-    const ty = sigRowY[nd.signal]; if (ty === undefined) return;
+  const _cptXY = (nd, ndIdx, otherIdx) => {
+    const ty = signalTopY[ndIdx]; if (ty === null || ty === undefined) return null;
     const hi = ty + 6, lo = ty + SIG_H - 6, mid2 = ty + SIG_H / 2;
-    const sigObj = signals.find(s => s?.name === nd.signal);
+    const sigObj = signals[ndIdx];
     const period2 = sigObj?.period || 1, phase2 = sigObj?.phase || 0;
     const CW2 = CELL_W * period2;
-    const x0 = LABEL_W + (phase2 + nd.cycle * period2) * CELL_W;
+    const nudgePx = periodNs > 0 ? (sigObj?.nudge?.[String(nd.cycle)] ?? 0) / periodNs * CELL_W : 0;
+    const x0 = LABEL_W + (phase2 + nd.cycle * period2) * CELL_W + nudgePx;
     const busSlope = slopeForCW(slopeFrac, CW2);
+    const rail = otherIdx !== ndIdx ? (otherIdx > ndIdx ? 'lo' : 'hi') : null;
     let nx = x0, ny = mid2;
     if (sigObj?.wave) {
       const res = resolveWave(sigObj.wave);
@@ -1990,7 +3336,7 @@ function computeEdgeHitRegions() {
       const isBus = ch==='d'||ch==='D'||ch==='='||/^[2-9]$/.test(ch);
       if (isBus && (nd.anchor === 'e' || nd.anchor === 's')) {
         nx = nd.anchor === 'e' ? x0 + CW2 - busSlope : x0 + busSlope;
-        ny = nodeRail[key] === 'lo' ? lo : hi;
+        ny = rail === 'lo' ? lo : hi;
       } else if (isBus) {
         const ci = Math.floor(nd.cycle);
         const prevCh = ci > 0 ? res[ci - 1] : null;
@@ -1998,35 +3344,35 @@ function computeEdgeHitRegions() {
         ny = (!prevIsBus && prevCh) ? (levelY(prevCh, hi, lo, mid2) ?? mid2) : mid2;
       } else {
         const fy = levelY(ch, hi, lo, mid2);
-        ny = (fy !== null && fy !== mid2 && nodeRail[key]) ? (nodeRail[key] === 'lo' ? lo : hi) : (fy ?? mid2);
+        ny = (fy !== null && fy !== mid2 && rail) ? (rail === 'lo' ? lo : hi) : (fy ?? mid2);
       }
     }
-    nodeXY[key] = { x: nx, y: ny, signal: nd.signal };
-  });
+    return { x: nx, y: ny, signal: nd.signal };
+  };
 
   const gapGroups = new Map(), sameSigHiMap = new Map(), sameSigLoMap = new Map();
   const edgePts = [];
 
-  workingSpec.edge.forEach((str, edgeIdx) => {
-    const m = str.match(/^([A-Za-z0-9]+)\s*[→>~-]+\s*([A-Za-z0-9]+)\s*(.*)?$/);
-    if (!m) { edgePts.push(null); return; }
-    const p1 = nodeXY[m[1]], p2 = nodeXY[m[2]];
+  workingSpec.constraint.forEach((c, cIdx) => {
+    if (!c?.p1 || !c?.p2) { edgePts.push(null); return; }
+    const i1 = signals.findIndex(s => s?.name === c.p1.signal);
+    const i2 = signals.findIndex(s => s?.name === c.p2.signal);
+    if (i1 < 0 || i2 < 0) { edgePts.push(null); return; }
+    const p1 = _cptXY(c.p1, i1, i2), p2 = _cptXY(c.p2, i2, i1);
     if (!p1 || !p2) { edgePts.push(null); return; }
     edgePts.push({ p1, p2 });
-    if (p1.signal !== p2.signal) {
-      const i1 = signals.findIndex(s => s?.name === p1.signal);
-      const i2 = signals.findIndex(s => s?.name === p2.signal);
+    if (c.p1.signal !== c.p2.signal) {
       const gapIdx = Math.max(i1, i2) - 1;
       if (!gapGroups.has(gapIdx)) gapGroups.set(gapIdx, []);
-      gapGroups.get(gapIdx).push({ edgeIdx, p1, p2 });
+      gapGroups.get(gapIdx).push({ cIdx, p1, p2 });
     } else {
-      const si = signals.findIndex(s => s?.name === p1.signal);
+      const si = i1;
       if (sameHi?.has(si)) {
         if (!sameSigHiMap.has(si)) sameSigHiMap.set(si, []);
-        sameSigHiMap.get(si).push({ edgeIdx, p1, p2 });
+        sameSigHiMap.get(si).push({ cIdx, p1, p2 });
       } else if (sameLo?.has(si)) {
         if (!sameSigLoMap.has(si)) sameSigLoMap.set(si, []);
-        sameSigLoMap.get(si).push({ edgeIdx, p1, p2 });
+        sameSigLoMap.get(si).push({ cIdx, p1, p2 });
       }
     }
   });
@@ -2040,7 +3386,7 @@ function computeEdgeHitRegions() {
       const rows = assignBracketRows(intervals);
       brackets.forEach((b, j) => {
         const midY = baseY + sign * DELAY_GAP * (rows[j] + 0.5);
-        regions.push({ edgeIdx: b.edgeIdx, x1: Math.min(b.p1.x, b.p2.x), x2: Math.max(b.p1.x, b.p2.x), midY, type: 'bracket' });
+        regions.push({ edgeIdx: b.cIdx, x1: Math.min(b.p1.x, b.p2.x), x2: Math.max(b.p1.x, b.p2.x), midY, type: 'bracket' });
       });
     });
   };
@@ -2049,14 +3395,12 @@ function computeEdgeHitRegions() {
   addBracketRegions(sameSigHiMap, si     => signalTopY[si],              -1);
   addBracketRegions(sameSigLoMap, si     => signalTopY[si] + SIG_H,      1);
 
-  workingSpec.edge.forEach((_, edgeIdx) => {
-    const pts = edgePts[edgeIdx];
-    if (!pts) return;
-    if (pts.p1.signal === pts.p2.signal) {
-      const si = signals.findIndex(s => s?.name === pts.p1.signal);
-      if (!sameHi?.has(si) && !sameLo?.has(si)) {
-        regions.push({ edgeIdx, p1: pts.p1, p2: pts.p2, type: 'arrow' });
-      }
+  workingSpec.constraint.forEach((c, cIdx) => {
+    const pts = edgePts[cIdx];
+    if (!pts || !c?.p1 || !c?.p2 || c.p1.signal !== c.p2.signal) return;
+    const si = signals.findIndex(s => s?.name === c.p1.signal);
+    if (!sameHi?.has(si) && !sameLo?.has(si)) {
+      regions.push({ edgeIdx: cIdx, p1: pts.p1, p2: pts.p2, type: 'arrow' });
     }
   });
 
@@ -2079,49 +3423,129 @@ function hitTestEdge(pos) {
   return -1;
 }
 
-function deleteConstraint(edgeIdx) {
-  if (!workingSpec?.edge) return;
-  const str = workingSpec.edge[edgeIdx];
-  if (!str) return;
-  const m = str.match(/^([A-Za-z0-9]+)\s*[→>~-]+\s*([A-Za-z0-9]+)/);
-  const candidates = m ? new Set([m[1], m[2]]) : new Set();
-  workingSpec.edge.splice(edgeIdx, 1);
-  if (!workingSpec.edge.length) delete workingSpec.edge;
-  if (workingSpec.node && candidates.size) {
-    const stillUsed = new Set();
-    (workingSpec.edge || []).forEach(e => {
-      const em = e.match(/^([A-Za-z0-9]+)\s*[→>~-]+\s*([A-Za-z0-9]+)/);
-      if (em) { stillUsed.add(em[1]); stillUsed.add(em[2]); }
+function computeMeasureHitRegions() {
+  if (!workingSpec?.measure || !_geo) return [];
+  const { signals, signalTopY, CELL_W, slopeFrac, sameHiRows, gapCounts } = _geo;
+
+  const getPtX = (pt) => {
+    const si = signals.findIndex(s => s?.name === pt.signal);
+    if (si < 0) return null;
+    const sig = signals[si];
+    const phase = sig.phase || 0, period = sig.period || 1;
+    const CW = CELL_W * period;
+    const x0 = LABEL_W + (phase + pt.cycle * period) * CELL_W;
+    const bs = slopeForCW(slopeFrac, CW);
+    return { nx: pt.anchor === 'e' ? x0 + CW - bs : pt.anchor === 's' ? x0 + bs : x0, si };
+  };
+
+  const hiGroups = new Map();
+  const gapGroups = new Map();
+  workingSpec.measure.forEach((m, mIdx) => {
+    const r1 = getPtX(m.p1), r2 = getPtX(m.p2);
+    if (!r1 || !r2) return;
+    const x1 = Math.min(r1.nx, r2.nx), x2 = Math.max(r1.nx, r2.nx);
+    if (r1.si === r2.si) {
+      if (!hiGroups.has(r1.si)) hiGroups.set(r1.si, []);
+      hiGroups.get(r1.si).push({ mIdx, x1, x2 });
+    } else {
+      const gapIdx = Math.max(r1.si, r2.si) - 1;
+      if (!gapGroups.has(gapIdx)) gapGroups.set(gapIdx, []);
+      gapGroups.get(gapIdx).push({ mIdx, x1, x2 });
+    }
+  });
+
+  const regions = new Array(workingSpec.measure.length);
+  hiGroups.forEach((items, si) => {
+    const constraintOffset = sameHiRows?.get(si) || 0;
+    const rows = assignBracketRows(items.map(it => ({ x1: it.x1, x2: it.x2 })));
+    items.forEach((it, j) => {
+      regions[it.mIdx] = { mIdx: it.mIdx, x1: it.x1, x2: it.x2, midY: signalTopY[si] - DELAY_GAP * (constraintOffset + rows[j] + 0.5) };
     });
-    candidates.forEach(k => { if (!stillUsed.has(k)) delete workingSpec.node[k]; });
-    if (!Object.keys(workingSpec.node).length) delete workingSpec.node;
-  }
-  syncEditorFromSpec();
-  render();
+  });
+  gapGroups.forEach((items, gapIdx) => {
+    const constraintOffset = gapCounts?.get(gapIdx) || 0;
+    const rows = assignBracketRows(items.map(it => ({ x1: it.x1, x2: it.x2 })));
+    items.forEach((it, j) => {
+      regions[it.mIdx] = { mIdx: it.mIdx, x1: it.x1, x2: it.x2, midY: signalTopY[gapIdx] + SIG_H + DELAY_GAP * (constraintOffset + rows[j] + 0.5) };
+    });
+  });
+  return regions.filter(Boolean);
 }
 
+function hitTestMeasure(pos) {
+  const HIT_R = 10;
+  for (const r of (hitRegions.measures || [])) {
+    if (pos.x >= r.x1 - HIT_R && pos.x <= r.x2 + HIT_R && Math.abs(pos.y - r.midY) <= HIT_R) return r.mIdx;
+  }
+  return -1;
+}
+
+function deleteConstraint(cIdx) {
+  if (!Array.isArray(workingSpec?.constraint)) return;
+  workingSpec.constraint.splice(cIdx, 1);
+  if (!workingSpec.constraint.length) delete workingSpec.constraint;
+  syncEditorFromSpec(); render(); pushHistory();
+}
+
+function _setConstraintModalMode(mode) {
+  const isMeasure = mode === 'measure';
+  document.getElementById('ctPreset').closest('label').style.display = isMeasure ? 'none' : '';
+  document.getElementById('ctValueRow').style.display = isMeasure ? 'none' : '';
+  document.getElementById('ctValue').value = '';
+  document.getElementById('ctShowValue').checked = false;
+}
 function openConstraintModal(anchor, target) {
-  pendingConstraint = { anchor, target };
+  pendingConstraint = { anchor, target, type: 'constrain' };
+  _setConstraintModalMode('constrain');
   document.getElementById('ctPreset').value = '';
   document.getElementById('ctLabel').value = '';
+  document.getElementById('ctLabel').placeholder = 'e.g.  tSU ≥ 2ns';
   document.getElementById('ctModalHdr').textContent = 'Add Timing Constraint';
   document.getElementById('ctAdd').textContent = document.getElementById('ctAdd').dataset.labelAdd;
   document.getElementById('constraintModal').style.display = 'flex';
   setTimeout(() => document.getElementById('ctLabel').focus(), 40);
 }
-function openEditConstraintModal(edgeIdx) {
-  const str = workingSpec.edge[edgeIdx];
-  const m = str.match(/^[A-Za-z0-9]+\s*[→>~-]+\s*[A-Za-z0-9]+\s*(.*)?$/);
-  pendingConstraint = { editIdx: edgeIdx };
+function openMeasureLabelModal(anchor, target) {
+  pendingConstraint = { anchor, target, type: 'measure' };
+  _setConstraintModalMode('measure');
+  document.getElementById('ctLabel').value = '';
+  document.getElementById('ctLabel').placeholder = 'e.g.  tSU';
+  document.getElementById('ctModalHdr').textContent = 'Add Measurement Label';
+  document.getElementById('ctAdd').textContent = 'Add Label';
+  document.getElementById('constraintModal').style.display = 'flex';
+  setTimeout(() => document.getElementById('ctLabel').focus(), 40);
+}
+function openEditMeasureModal(mIdx) {
+  const m = workingSpec.measure[mIdx];
+  pendingConstraint = { editMeasureIdx: mIdx, type: 'measure' };
+  _setConstraintModalMode('measure');
+  document.getElementById('ctLabel').value = m?.label || '';
+  document.getElementById('ctShowValue').checked = !!(m?.showValue);
+  document.getElementById('ctLabel').placeholder = 'e.g.  tSU';
+  document.getElementById('ctModalHdr').textContent = 'Edit Measurement Label';
+  document.getElementById('ctAdd').textContent = 'Save';
+  document.getElementById('constraintModal').style.display = 'flex';
+  setTimeout(() => document.getElementById('ctLabel').focus(), 40);
+}
+function openEditConstraintModal(cIdx) {
+  const c = workingSpec.constraint?.[cIdx];
+  if (!c) return;
+  const label = c.label || '';
+  pendingConstraint = { editIdx: cIdx, type: 'constrain' };
+  _setConstraintModalMode('constrain');
   document.getElementById('ctPreset').value = '';
-  document.getElementById('ctLabel').value = m?.[1]?.trim() || '';
+  document.getElementById('ctLabel').value = label;
+  document.getElementById('ctLabel').placeholder = 'e.g.  tSU ≥ 2ns';
   document.getElementById('ctModalHdr').textContent = 'Edit Timing Constraint';
   document.getElementById('ctAdd').textContent = document.getElementById('ctAdd').dataset.labelEdit;
+  document.getElementById('ctValue').value = c.value != null ? formatConstraintValue(c.value) : '';
+  document.getElementById('ctShowValue').checked = !!c.showValue;
   document.getElementById('constraintModal').style.display = 'flex';
   setTimeout(() => document.getElementById('ctLabel').focus(), 40);
 }
 function closeConstraintModal() {
   document.getElementById('constraintModal').style.display = 'none';
+  _setConstraintModalMode('constrain');
   pendingConstraint = null;
 }
 
@@ -2140,13 +3564,54 @@ function computeInsertionIdx(y) {
   const { signals, signalTopY } = _geo;
   let best = 0, bestD = Infinity;
   for (let i = 0; i <= signals.length; i++) {
-    const by = i === 0              ? (signalTopY[0] ?? HEAD_H)
-             : i === signals.length ? (signalTopY[signals.length - 1] ?? HEAD_H) + SIG_H
-             : (signalTopY[i - 1] + SIG_H + signalTopY[i]) / 2;
+    const prevY = i > 0 ? signalTopY[i - 1] : null;
+    const nextY = i < signals.length ? signalTopY[i] : null;
+    let by;
+    if (i === 0) by = nextY ?? HEAD_H;
+    else if (i === signals.length) by = prevY !== null ? prevY + SIG_H : HEAD_H;
+    else if (prevY === null && nextY === null) by = HEAD_H;
+    else if (prevY === null) by = nextY;
+    else if (nextY === null) by = prevY + SIG_H;
+    else by = (prevY + SIG_H + nextY) / 2;
     const d = Math.abs(y - by);
     if (d < bestD) { bestD = d; best = i; }
   }
   return best;
+}
+
+// Compute clamped cell boundaries for a signal — mirrors renderer's _bnd[] logic.
+function sigBoundaries(sig) {
+  const { CELL_W } = _geo;
+  const period = sig.period || 1, phase = sig.phase || 0;
+  const periodNs = getPeriodNs();
+  const len = resolveWave(sig.wave || '').length;
+  const bnd = [];
+  for (let j = 0; j <= len; j++)
+    bnd[j] = LABEL_W + (phase + j * period) * CELL_W +
+              (periodNs > 0 ? (sig.nudge?.[String(j)] ?? 0) / periodNs * CELL_W : 0);
+  for (let j = len - 1; j >= 0; j--)
+    if (bnd[j] > bnd[j + 1]) bnd[j] = bnd[j + 1];
+  return bnd;
+}
+
+function getCellIdxClamped(sigIdx, pixelX) {
+  if (!_geo || !workingSpec) return -1;
+  const sig = workingSpec.signal[sigIdx];
+  if (!sig?.wave) return -1;
+  const len = resolveWave(sig.wave).length;
+  if (len === 0) return -1;
+  const period = sig.period || 1, phase = sig.phase || 0;
+  const { CELL_W } = _geo;
+  if (sig.nudge && Object.keys(sig.nudge).length > 0) {
+    const bnd = sigBoundaries(sig);
+    for (let i = 0; i < len; i++) {
+      if (pixelX < bnd[i + 1]) return i;
+    }
+    const c2 = Math.floor(((pixelX - LABEL_W) / CELL_W - phase) / period);
+    return Math.max(0, c2);
+  }
+  const c = Math.floor(((pixelX - LABEL_W) / CELL_W - phase) / period);
+  return Math.max(0, c);
 }
 
 function getCellIdx(sigIdx, pixelX) {
@@ -2154,8 +3619,65 @@ function getCellIdx(sigIdx, pixelX) {
   const sig = workingSpec.signal[sigIdx];
   if (!sig?.wave) return -1;
   const period = sig.period || 1, phase = sig.phase || 0;
-  const c = Math.floor(((pixelX - LABEL_W) / _geo.CELL_W - phase) / period);
+  const { CELL_W } = _geo;
+  if (sig.nudge && Object.keys(sig.nudge).length > 0) {
+    const bnd = sigBoundaries(sig);
+    for (let i = 0; i < bnd.length - 1; i++) {
+      if (pixelX >= bnd[i] && pixelX < bnd[i + 1]) return i;
+    }
+    return -1;
+  }
+  const c = Math.floor(((pixelX - LABEL_W) / CELL_W - phase) / period);
   return (c >= 0 && c < sig.wave.length) ? c : -1;
+}
+
+function insertWaveCell(sigIdx, cellIdx, after) {
+  const sig = workingSpec.signal[sigIdx];
+  if (!sig?.wave) return;
+  const chars = sig.wave.split('');
+  const insertAt = after ? cellIdx + 1 : cellIdx;
+  const newChar = (!after && cellIdx === 0) ? chars[0] : '.';
+  chars.splice(insertAt, 0, newChar);
+  sig.wave = chars.join('');
+  syncEditorFromSpec(); render(); pushHistory();
+}
+
+function deleteWaveCell(sigIdx, cellIdx) {
+  const sig = workingSpec.signal[sigIdx];
+  if (!sig?.wave || sig.wave.replace(/ /g, '').length <= 1) return;
+  const isBus = c => c === '=' || /^[2-9]$/.test(c);
+  const chars = sig.wave.split('');
+  const ch = chars[cellIdx];
+  if (isBus(ch) && sig.data) {
+    const dataIdx = chars.slice(0, cellIdx).filter(isBus).length;
+    sig.data.splice(dataIdx, 1);
+    while (sig.data.length && !sig.data[sig.data.length - 1]) sig.data.pop();
+    if (!sig.data.length) delete sig.data;
+  }
+  chars.splice(cellIdx, 1);
+  sig.wave = chars.join('');
+  syncEditorFromSpec(); render(); pushHistory();
+}
+
+function applyCellStateRange(sigIdx, from, to, state) {
+  const sig = workingSpec.signal[sigIdx];
+  if (!sig?.wave) return;
+  const isBus = c => c === '=' || /^[2-9]$/.test(c);
+  const chars = sig.wave.split('');
+  while (chars.length <= to) chars.push('.');
+  for (let i = to; i >= from; i--) {
+    if (isBus(chars[i]) && !isBus(state) && sig.data) {
+      const dataIdx = chars.slice(0, i).filter(isBus).length;
+      sig.data.splice(dataIdx, 1);
+    }
+    chars[i] = state;
+  }
+  sig.wave = chars.join('');
+  if (sig.data) {
+    while (sig.data.length && !sig.data[sig.data.length - 1]) sig.data.pop();
+    if (!sig.data.length) delete sig.data;
+  }
+  syncEditorFromSpec(); render(); pushHistory();
 }
 
 function applyCellState(sigIdx, cellIdx, state) {
@@ -2163,6 +3685,7 @@ function applyCellState(sigIdx, cellIdx, state) {
   if (!sig?.wave) return;
   const isBus = c => c === '=' || /^[2-9]$/.test(c);
   const chars = sig.wave.split('');
+  while (chars.length <= cellIdx) chars.push('.');
   const oldChar = chars[cellIdx];
   if (isBus(oldChar) && !isBus(state) && sig.data) {
     const dataIdx = chars.slice(0, cellIdx).filter(isBus).length;
@@ -2172,8 +3695,7 @@ function applyCellState(sigIdx, cellIdx, state) {
   }
   chars[cellIdx] = state;
   sig.wave = chars.join('');
-  syncEditorFromSpec();
-  render();
+  syncEditorFromSpec(); render(); pushHistory();
 }
 
 function applyBusCellState(sigIdx, cellIdx, colorChar, label) {
@@ -2194,8 +3716,7 @@ function applyBusCellState(sigIdx, cellIdx, colorChar, label) {
   }
   while (sig.data.length && !sig.data[sig.data.length - 1]) sig.data.pop();
   if (!sig.data.length) delete sig.data;
-  syncEditorFromSpec();
-  render();
+  syncEditorFromSpec(); render(); pushHistory();
 }
 
 function showCellEditor(sigIdx, pos) {
@@ -2204,6 +3725,7 @@ function showCellEditor(sigIdx, pos) {
   const ce = document.getElementById('cellEditor');
   const cr = waveCanvas.getBoundingClientRect();
   const ty = _geo.signalTopY[sigIdx];
+  if (ty === null) return;
   let left = cr.left + pos.x;
   let top  = cr.top  + ty + SIG_H + 4;
   if (left + 220 > window.innerWidth)  left = window.innerWidth  - 226;
@@ -2212,6 +3734,8 @@ function showCellEditor(sigIdx, pos) {
   ce.style.top  = top  + 'px';
   ce._sigIdx   = sigIdx;
   ce._cellIdx  = cellIdx;
+  ce._cellFrom = null;
+  ce._cellTo   = null;
 
   const isBus = c => c === '=' || /^[2-9]$/.test(c);
   const sig = workingSpec.signal[sigIdx];
@@ -2240,6 +3764,59 @@ function hideCellEditor() {
   document.getElementById('busPanel').style.display = 'none';
 }
 
+function _openGroupRenameInline(sigIdx) {
+  if (!workingSpec || !_geo) return;
+  const sig = workingSpec.signal[sigIdx];
+  if (!isGroupHdr(sig)) return;
+  const topY = _geo.signalTopY[sigIdx];
+  if (topY === null) return;
+  const cr = waveCanvas.getBoundingClientRect();
+  const inp = document.createElement('input');
+  inp.type = 'text'; inp.value = sig.group || '';
+  Object.assign(inp.style, {
+    position: 'fixed',
+    left:  (cr.left + HANDLE_W + 8) + 'px',
+    top:   (cr.top  + topY) + 'px',
+    width: (cr.width - HANDLE_W - 20) + 'px',
+    height: SIG_H + 'px',
+    background: '#1a2235', border: '1px solid #4d8ef0', color: '#dce2f0',
+    fontFamily: '"Inter", sans-serif', fontSize: '11px', fontWeight: '600',
+    padding: '0 8px', outline: 'none', zIndex: '1000', borderRadius: '2px',
+    boxSizing: 'border-box',
+  });
+  document.body.appendChild(inp);
+  inp.focus(); inp.select();
+  const commit = () => {
+    const name = inp.value.trim();
+    sig.group = name;
+    syncEditorFromSpec(); render(); pushHistory();
+    inp.remove();
+  };
+  inp.addEventListener('blur', commit);
+  inp.addEventListener('keydown', ev => {
+    if (ev.key === 'Enter') commit();
+    else if (ev.key === 'Escape') inp.remove();
+  });
+}
+
+function findGroupEnd(startIdx) {
+  const sigs = workingSpec.signal;
+  let depth = 0;
+  for (let i = startIdx; i < sigs.length; i++) {
+    if (isGroupHdr(sigs[i])) depth++;
+    else if (isGroupEnd(sigs[i])) { depth--; if (depth === 0) return i; }
+  }
+  return sigs.length - 1;
+}
+
+function toggleGroupCollapsed(sigIdx) {
+  if (!workingSpec) return;
+  const sig = workingSpec.signal[sigIdx];
+  if (!isGroupHdr(sig)) return;
+  sig.collapsed = !sig.collapsed;
+  syncEditorFromSpec(); render(); pushHistory();
+}
+
 function finishDrag(pos) {
   if (!drag.active) return;
   const wasClick = !drag.started;
@@ -2249,14 +3826,24 @@ function finishDrag(pos) {
     if (sig) {
       const p = dragPhaseOverride.phase;
       if (p === 0) delete sig.phase; else sig.phase = p;
+      propagateConstraints(sig.name);
     }
     dragPhaseOverride = null;
     syncEditorFromSpec();
   } else if (drag.type === 'row' && drag.started) {
     const toIdx = computeInsertionIdx(pos.y);
     const fromIdx = drag.idx;
-    if (toIdx !== fromIdx && toIdx !== fromIdx + 1) {
-      const sigs = workingSpec.signal;
+    const sigs = workingSpec.signal;
+    if (isGroupHdr(sigs[fromIdx])) {
+      const endIdx = findGroupEnd(fromIdx);
+      const blockSize = endIdx - fromIdx + 1;
+      if (toIdx < fromIdx || toIdx > endIdx + 1) {
+        const block = sigs.splice(fromIdx, blockSize);
+        const insertAt = toIdx > endIdx ? toIdx - blockSize : toIdx;
+        sigs.splice(insertAt, 0, ...block);
+        syncEditorFromSpec();
+      }
+    } else if (toIdx !== fromIdx && toIdx !== fromIdx + 1) {
       const [removed] = sigs.splice(fromIdx, 1);
       sigs.splice(toIdx > fromIdx ? toIdx - 1 : toIdx, 0, removed);
       syncEditorFromSpec();
@@ -2274,21 +3861,32 @@ function finishDrag(pos) {
   drag.active = false; drag.type = null; drag.idx = -1; drag.started = false;
   dragPhaseOverride = null;
   waveCanvas.style.cursor = (activeTool === 'measure' || activeTool === 'constrain') ? 'crosshair' : '';
-  render();
+  render(); pushHistory();
 }
 
 // ─── Canvas events ─────────────────────────────────────────────────────────────
 waveCanvas.addEventListener('click', e => {
+  if (_suppressNextClick) { _suppressNextClick = false; return; }
   if (activeTool !== 'pointer' || !workingSpec || !_geo) return;
   const pos = canvasPos(e);
+  const grp = hitTest(hitRegions.groups, pos.x, pos.y);
+  if (grp) { toggleGroupCollapsed(grp.idx); return; }
   const wave = hitTest(hitRegions.waves, pos.x, pos.y);
   if (wave) showCellEditor(wave.idx, pos);
 });
 
 waveCanvas.addEventListener('mousedown', e => {
+  const _pos0 = canvasPos(e);
+  if (_pos0.y < HEAD_H && _pos0.x >= LABEL_W) {
+    _rulerZoomDrag = { x1: _pos0.x, x2: _pos0.x };
+    waveCanvas.style.cursor = 'col-resize';
+    e.preventDefault(); return;
+  }
   if (activeTool === 'measure') {
     const pos = canvasPos(e);
-    measureAnchor = findNearestEdge(pos.x, pos.y) ?? pos.x;
+    const snap = snapToConstraintPoint(pos);
+    measureAnchorPoint = snap || null;
+    measureAnchor = snap ? snap.x : (findNearestEdge(pos.x, pos.y) ?? pos.x);
     e.preventDefault(); return;
   }
   if (activeTool === 'constrain') {
@@ -2297,8 +3895,8 @@ waveCanvas.addEventListener('mousedown', e => {
     if (snap) { annotateAnchor = snap; renderCursor(); }
     e.preventDefault(); return;
   }
-  if (activeTool !== 'select') return;
   if (!workingSpec || !_geo) return;
+  if (hoverCell !== null) { hoverCell = null; renderCursor(); }
   const pos = canvasPos(e);
   const handle = hitTest(hitRegions.handles, pos.x, pos.y);
   if (handle) {
@@ -2307,6 +3905,18 @@ waveCanvas.addEventListener('mousedown', e => {
     waveCanvas.style.cursor = 'grabbing';
     e.preventDefault(); return;
   }
+  if (activeTool === 'pointer') {
+    const wave = hitTest(hitRegions.waves, pos.x, pos.y);
+    if (wave) {
+      const ci = getCellIdxClamped(wave.idx, pos.x);
+      if (ci >= 0) {
+        _paintDrag = { active: true, sigIdx: wave.idx, startCell: ci, endCell: ci };
+        hoverCell = { sigIdx: wave.idx, cellIdx: ci };
+      }
+    }
+    return;
+  }
+  if (activeTool !== 'select') return;
   const wave = hitTest(hitRegions.waves, pos.x, pos.y);
   if (wave) {
     Object.assign(drag, { active: true, type: 'wave', idx: wave.idx,
@@ -2318,11 +3928,37 @@ waveCanvas.addEventListener('mousedown', e => {
 });
 
 waveCanvas.addEventListener('mouseleave', () => {
-  if (activeTool === 'measure' || activeTool === 'constrain') { cursorPos = null; renderCursor(); }
+  if (activeTool === 'measure' || activeTool === 'constrain') cursorPos = null;
+  if (!_rulerZoomDrag) { _paintDrag.active = false; hoverCell = null; }
+  renderCursor();
 });
+
+// Ctrl+wheel: zoom at cursor position
+document.getElementById('canvasPane').addEventListener('wheel', e => {
+  if (!e.ctrlKey) return;
+  e.preventDefault();
+  const scrollX = document.getElementById('diagramScrollX');
+  const rect = scrollX.getBoundingClientRect();
+  const mouseXInPane = e.clientX - rect.left + scrollX.scrollLeft;
+  const diagramX = mouseXInPane;
+  const oldZoom = zoom;
+  zoom = Math.max(0.05, Math.min(6, zoom * (e.deltaY < 0 ? 1.25 : 1/1.25)));
+  _saveZoom(); render();
+  const waveX = diagramX - LABEL_W;
+  const newDiagramX = waveX > 0 ? LABEL_W + waveX * (zoom / oldZoom) : diagramX;
+  scrollX.scrollLeft = Math.max(0, newDiagramX - (e.clientX - rect.left));
+}, { passive: false });
 
 waveCanvas.addEventListener('mousemove', e => {
   const pos = canvasPos(e);
+  if (_rulerZoomDrag) {
+    _rulerZoomDrag.x2 = pos.x;
+    waveCanvas.style.cursor = 'col-resize';
+    renderCursor(); return;
+  }
+  if (pos.y < HEAD_H && pos.x >= LABEL_W) {
+    waveCanvas.style.cursor = 'col-resize'; return;
+  }
   if (activeTool === 'measure') {
     cursorPos = pos; waveCanvas.style.cursor = 'crosshair'; renderCursor(); return;
   }
@@ -2330,12 +3966,35 @@ waveCanvas.addEventListener('mousemove', e => {
     cursorPos = pos; waveCanvas.style.cursor = 'crosshair'; renderCursor(); return;
   }
   if (!drag.active) {
-    if (activeTool === 'select') {
-      if      (hitTest(hitRegions.handles, pos.x, pos.y)) waveCanvas.style.cursor = 'grab';
-      else if (hitTest(hitRegions.waves,   pos.x, pos.y)) waveCanvas.style.cursor = 'ew-resize';
-      else waveCanvas.style.cursor = '';
+    let newHover = null;
+    if (hitTest(hitRegions.handles, pos.x, pos.y)) {
+      waveCanvas.style.cursor = 'grab';
+    } else if (activeTool === 'select') {
+      waveCanvas.style.cursor = hitTest(hitRegions.waves, pos.x, pos.y) ? 'ew-resize' : '';
+    } else if (activeTool === 'pointer') {
+      waveCanvas.style.cursor = '';
+      if (_paintDrag.active) {
+        const ci = getCellIdxClamped(_paintDrag.sigIdx, pos.x);
+        if (ci >= 0 && ci !== _paintDrag.endCell) {
+          _paintDrag.endCell = ci;
+          const from = Math.min(_paintDrag.startCell, ci);
+          const to   = Math.max(_paintDrag.startCell, ci);
+          hoverCell = { sigIdx: _paintDrag.sigIdx, cellRange: [from, to] };
+          renderCursor();
+        }
+        return;
+      }
+      const waveHit = hitTest(hitRegions.waves, pos.x, pos.y);
+      if (waveHit) {
+        const ci = getCellIdxClamped(waveHit.idx, pos.x);
+        if (ci >= 0) newHover = { sigIdx: waveHit.idx, cellIdx: ci };
+      }
     } else {
       waveCanvas.style.cursor = '';
+    }
+    if (newHover?.sigIdx !== hoverCell?.sigIdx || newHover?.cellIdx !== hoverCell?.cellIdx) {
+      hoverCell = newHover;
+      renderCursor();
     }
     return;
   }
@@ -2353,7 +4012,48 @@ waveCanvas.addEventListener('mousemove', e => {
 });
 
 waveCanvas.addEventListener('mouseup', e => {
-  if (activeTool === 'measure') { measureAnchor = null; renderCursor(); return; }
+  if (_rulerZoomDrag) {
+    const { x1, x2 } = _rulerZoomDrag;
+    _rulerZoomDrag = null;
+    waveCanvas.style.cursor = '';
+    zoomToRange(x1, x2);
+    return;
+  }
+  if (_paintDrag.active) {
+    const { sigIdx, startCell, endCell } = _paintDrag;
+    _paintDrag = { active: false, sigIdx: -1, startCell: -1, endCell: -1 };
+    hoverCell = null; renderCursor();
+    if (startCell !== endCell) {
+      const from = Math.min(startCell, endCell), to = Math.max(startCell, endCell);
+      _suppressNextClick = true;
+      const ce = document.getElementById('cellEditor');
+      const pos = canvasPos(e), cr = waveCanvas.getBoundingClientRect();
+      const ty = _geo?.signalTopY[sigIdx];
+      if (ty != null) {
+        let left = cr.left + pos.x, top = cr.top + ty + SIG_H + 4;
+        if (left + 220 > window.innerWidth)  left = window.innerWidth  - 226;
+        if (top  + 160 > window.innerHeight) top  = cr.top + ty - 164;
+        ce.style.left = left + 'px'; ce.style.top = top + 'px';
+      }
+      ce._sigIdx = sigIdx; ce._cellIdx = from; ce._cellFrom = from; ce._cellTo = to;
+      document.getElementById('busPanel').style.display = 'none';
+      ce.style.display = 'flex';
+      _cellEditorJustShown = true;
+      requestAnimationFrame(() => { _cellEditorJustShown = false; });
+      return;
+    }
+    return;
+  }
+  if (activeTool === 'measure') {
+    if (measureAnchorPoint) {
+      const snap2 = snapToConstraintPoint(canvasPos(e));
+      if (snap2 && (snap2.signal !== measureAnchorPoint.signal || snap2.cycle !== measureAnchorPoint.cycle || snap2.anchor !== measureAnchorPoint.anchor)) {
+        openMeasureLabelModal(measureAnchorPoint, snap2);
+        measureAnchor = null; measureAnchorPoint = null; renderCursor(); return;
+      }
+    }
+    measureAnchor = null; measureAnchorPoint = null; renderCursor(); return;
+  }
   if (activeTool === 'constrain') {
     if (annotateAnchor) {
       const pos = canvasPos(e);
@@ -2371,6 +4071,42 @@ waveCanvas.addEventListener('mouseup', e => {
 waveCanvas.addEventListener('dblclick', e => {
   if (!workingSpec || !_geo) return;
   const pos = canvasPos(e);
+
+  if (pos.y <= HEAD_H && pos.x >= LABEL_W) {
+    const cr = waveCanvas.getBoundingClientRect();
+    const inp = document.createElement('input');
+    inp.type = 'text'; inp.value = workingSpec.title || '';
+    inp.placeholder = 'Diagram title…';
+    Object.assign(inp.style, {
+      position: 'fixed',
+      left: (cr.left + LABEL_W) + 'px', top: cr.top + 'px',
+      width: (cr.width - LABEL_W - 4) + 'px', height: HEAD_H + 'px',
+      background: '#1a2235', border: '1px solid #4d8ef0', color: '#d4d8e2',
+      fontFamily: '"Inter", sans-serif', fontSize: '12px', fontWeight: '600',
+      padding: '0 8px', outline: 'none', zIndex: '1000', borderRadius: '2px',
+      boxSizing: 'border-box',
+    });
+    document.body.appendChild(inp);
+    inp.focus(); inp.select();
+    const commit = () => {
+      const t = inp.value.trim();
+      if (t) workingSpec.title = t; else delete workingSpec.title;
+      syncEditorFromSpec(); render(); pushHistory(); inp.remove();
+    };
+    inp.addEventListener('blur', commit);
+    inp.addEventListener('keydown', ev => {
+      if (ev.key === 'Enter') commit();
+      else if (ev.key === 'Escape') inp.remove();
+    });
+    return;
+  }
+
+  const grp = hitTest(hitRegions.groups, pos.x, pos.y);
+  if (grp && isGroupHdr(workingSpec.signal[grp.idx])) {
+    _openGroupRenameInline(grp.idx);
+    return;
+  }
+
   const lbl = hitTest(hitRegions.labels, pos.x, pos.y);
   if (!lbl) return;
   const sig = workingSpec.signal[lbl.idx];
@@ -2378,6 +4114,7 @@ waveCanvas.addEventListener('dblclick', e => {
 
   const cr = waveCanvas.getBoundingClientRect();
   const ty = _geo.signalTopY[lbl.idx];
+  if (ty === null) return;
   const inp = document.createElement('input');
   inp.type = 'text'; inp.value = sig.name;
   Object.assign(inp.style, {
@@ -2395,11 +4132,14 @@ waveCanvas.addEventListener('dblclick', e => {
   const commit = () => {
     const name = inp.value.trim();
     if (name && name !== sig.name) {
-      if (workingSpec.node) Object.values(workingSpec.node).forEach(nd => {
-        if (nd.signal === sig.name) nd.signal = name;
-      });
+      if (Array.isArray(workingSpec.constraint)) {
+        workingSpec.constraint.forEach(c => {
+          if (c.p1?.signal === sig.name) c.p1.signal = name;
+          if (c.p2?.signal === sig.name) c.p2.signal = name;
+        });
+      }
       sig.name = name;
-      syncEditorFromSpec(); render();
+      syncEditorFromSpec(); render(); pushHistory();
     }
     inp.remove();
   };
@@ -2418,14 +4158,20 @@ document.addEventListener('mousemove', e => {
 });
 document.addEventListener('mouseup', e => {
   paneResizing = false;
+  if (_rulerZoomDrag) {
+    const { x1, x2 } = _rulerZoomDrag;
+    _rulerZoomDrag = null;
+    waveCanvas.style.cursor = '';
+    zoomToRange(x1, x2);
+    return;
+  }
   if (drag.active) finishDrag({ x: drag.curX, y: drag.curY });
 });
 
 // ─── Source textarea ───────────────────────────────────────────────────────────
 sourceEl.addEventListener('input', () => {
-  localStorage.setItem('wavetool_source', sourceEl.value);
   clearTimeout(renderTimer);
-  renderTimer = setTimeout(() => { workingSpec = null; render(); }, 500);
+  renderTimer = setTimeout(() => { workingSpec = null; render(); if (workingSpec) pushHistory(); }, 500);
 });
 
 // ─── Toolbar ───────────────────────────────────────────────────────────────────
@@ -2433,23 +4179,68 @@ document.getElementById('btnPointer') .addEventListener('click', () => setTool('
 document.getElementById('btnSelect')  .addEventListener('click', () => setTool('select'));
 document.getElementById('btnMeasure') .addEventListener('click', () => setTool('measure'));
 document.getElementById('btnConstrain').addEventListener('click', () => setTool('constrain'));
-document.getElementById('btnZoomOut')    .addEventListener('click', zoomOut);
-document.getElementById('btnZoomIn')     .addEventListener('click', zoomIn);
-document.getElementById('btnToggleJSON') .addEventListener('click', toggleJSON);
-document.getElementById('btnExport')     .addEventListener('click', openExportModal);
+
+// ─── Menus ─────────────────────────────────────────────────────────────────────
+function _closeAllMenus() {
+  document.querySelectorAll('.menu-root.open').forEach(m => m.classList.remove('open'));
+}
+document.querySelectorAll('.menu-trigger').forEach(btn => {
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    const root = btn.closest('.menu-root');
+    const wasOpen = root.classList.contains('open');
+    _closeAllMenus();
+    if (!wasOpen) root.classList.add('open');
+  });
+});
+document.addEventListener('click', _closeAllMenus);
+
+function _mi(id, fn) {
+  document.getElementById(id).addEventListener('click', () => { _closeAllMenus(); fn(); });
+}
+_mi('miOpen',       openDiagram);
+_mi('miSave',       saveDiagram);
+_mi('miUndo',       undo);
+_mi('miRedo',       redo);
+_mi('miConfig',     openConfigModal);
+_mi('miClear',      () => {
+  if (window.confirm('Erase all signals and constraints?')) {
+    workingSpec = { signal: [] };
+    syncEditorFromSpec(); render(); pushHistory();
+  }
+});
+_mi('miZoomIn',     zoomIn);
+_mi('miZoomOut',    zoomOut);
+_mi('miZoomFit',    zoomFit);
+_mi('miToggleJSON', toggleJSON);
+
+document.getElementById('fileOpenInput').addEventListener('change', e => {
+  const file = e.target.files[0]; if (!file) return;
+  e.target.value = '';
+  _confirmLoadFile(file);
+});
+
+window.addEventListener('beforeunload', e => {
+  if (_dirty) { e.preventDefault(); e.returnValue = ''; }
+});
 document.getElementById('expCancel')     .addEventListener('click', closeExportModal);
 document.getElementById('expSVG')        .addEventListener('click', doExportSVG);
+document.getElementById('expPreview')    .addEventListener('click', doPreviewPNG);
 document.getElementById('expPNG')        .addEventListener('click', doExportPNG);
 document.getElementById('exportModal')   .addEventListener('click', e => { if (e.target === document.getElementById('exportModal')) closeExportModal(); });
-document.getElementById('btnRender')     .addEventListener('click', () => { workingSpec = null; render(); });
+document.getElementById('btnExport')     .addEventListener('click', openExportModal);
 
 document.addEventListener('keydown', e => {
   const tag = e.target.tagName;
   const inInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
   if (e.key === 'Escape') {
     if (activeTool === 'constrain' && annotateAnchor) { annotateAnchor = null; renderCursor(); }
-    else if (activeTool === 'measure' && measureAnchor) { measureAnchor = null; renderCursor(); }
+    else if (activeTool === 'measure' && measureAnchor) { measureAnchor = null; measureAnchorPoint = null; renderCursor(); }
     else if (activeTool !== 'pointer') setTool('pointer');
+  }
+  if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+    if (e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
+    if ((e.key === 'y') || (e.key === 'z' && e.shiftKey)) { e.preventDefault(); redo(); return; }
   }
   if (!inInput && !e.ctrlKey && !e.metaKey && !e.altKey) {
     if (e.key === '1') setTool('pointer');
@@ -2458,45 +4249,202 @@ document.addEventListener('keydown', e => {
     else if (e.key === '4') setTool('constrain');
     else if (e.key === '+' || e.key === '=') zoomIn();
     else if (e.key === '-') zoomOut();
+    else if (e.key === 'f' || e.key === 'F') zoomFit();
+    else if (e.key === 'a') openAddSignalModal();
   }
 });
+
+// ─── Duplicate signal ──────────────────────────────────────────────────────────
+function duplicateSignal(sigIdx) {
+  if (!workingSpec) return;
+  const orig = workingSpec.signal[sigIdx];
+  if (!orig) return;
+  const clone = JSON.parse(JSON.stringify(orig));
+  const baseName = (orig.name || '').replace(/ \(\d+\)$/, '');
+  const escaped = baseName.replace(/[.*+?^${}()|[\]\\]/g, c => '\\' + c);
+  const pat = new RegExp('^' + escaped + ' \\((\\d+)\\)$');
+  let maxN = 0;
+  (workingSpec.signal || []).forEach(s => {
+    if (!s?.name) return;
+    const m = s.name.match(pat);
+    if (m) maxN = Math.max(maxN, parseInt(m[1]));
+  });
+  clone.name = `${baseName} (${maxN + 1})`;
+  workingSpec.signal.splice(sigIdx + 1, 0, clone);
+  syncEditorFromSpec(); render(); pushHistory();
+}
 
 // ─── Add Signal modal ──────────────────────────────────────────────────────────
 function openAddSignalModal() {
   document.getElementById('asmName').value = '';
   document.getElementById('asmType').value = 'digital';
+  document.getElementById('asmPeriodRow').style.display = 'none';
+  document.getElementById('asmPeriod').value = '';
+  document.getElementById('asmEdgeRow').style.display = 'none';
+  document.getElementById('asmEdge').checked = false;
+  document.getElementById('asmDDRRow').style.display = 'none';
+  document.getElementById('asmDDR').checked = false;
+  const vr = document.getElementById('asmVarRows');
+  vr.innerHTML = ''; vr.style.display = 'none';
   addSignalModal.style.display = 'flex';
   setTimeout(() => document.getElementById('asmName').focus(), 40);
 }
-function closeAddSignalModal() { addSignalModal.style.display = 'none'; }
+function closeAddSignalModal() {
+  addSignalModal.style.display = 'none';
+  const vr = document.getElementById('asmVarRows');
+  vr.innerHTML = ''; vr.style.display = 'none';
+}
+
+function _detectVars(name) {
+  const vars = [], seen = new Set();
+  for (const m of name.matchAll(/\{(\w+)\}/g)) {
+    if (!seen.has(m[1])) { vars.push(m[1]); seen.add(m[1]); }
+  }
+  return vars;
+}
+
+function _updateVarRows() {
+  const name = document.getElementById('asmName').value;
+  const vars = _detectVars(name);
+  const container = document.getElementById('asmVarRows');
+  container.innerHTML = '';
+  if (!vars.length) { container.style.display = 'none'; return; }
+  container.style.display = 'flex';
+  vars.forEach(v => {
+    const row = document.createElement('div');
+    row.className = 'asm-var-row';
+    row.dataset.var = v;
+    row.innerHTML =
+      `<span class="asm-var-name">{${v}}</span>` +
+      `<span class="asm-var-label">from</span>` +
+      `<input class="asm-var-from" type="number" value="0" step="1">` +
+      `<span class="asm-var-label">to</span>` +
+      `<input class="asm-var-to" type="number" value="3" step="1">`;
+    container.appendChild(row);
+  });
+}
+
+function _makeSig(name, type, len, markers, ddr, periodMult) {
+  let sig;
+  switch (type) {
+    case 'clock_p': sig = { name, wave: (ddr ? 'Q' : markers ? 'P' : 'p').repeat(len) }; break;
+    case 'clock_n': sig = { name, wave: (ddr ? 'R' : markers ? 'N' : 'n').repeat(len) }; break;
+    default:        sig = { name, wave: '0'.repeat(len) }; break;
+  }
+  if (periodMult > 0 && periodMult !== 1) sig.period = parseFloat(periodMult.toPrecision(8));
+  return sig;
+}
+
+function _validateVarRows() {
+  let ok = true;
+  document.querySelectorAll('#asmVarRows .asm-var-row').forEach(row => {
+    const fromEl = row.querySelector('.asm-var-from');
+    const toEl   = row.querySelector('.asm-var-to');
+    const from = parseInt(fromEl.value);
+    const to   = parseInt(toEl.value);
+    const fromOk = Number.isInteger(from) && from >= 0;
+    const toOk   = Number.isInteger(to)   && to   >= 0;
+    fromEl.classList.toggle('asm-var-invalid', !fromOk);
+    toEl.classList.toggle('asm-var-invalid',   !toOk);
+    if (!fromOk || !toOk) ok = false;
+  });
+  return ok;
+}
+
+function _expandSignals(name, type, len, markers, ddr, periodMult = 0) {
+  const rows = [...document.querySelectorAll('#asmVarRows .asm-var-row')];
+  if (!rows.length) return [_makeSig(name, type, len, markers, ddr, periodMult)];
+  const vars = rows.map(row => {
+    const from = parseInt(row.querySelector('.asm-var-from').value) || 0;
+    const to   = parseInt(row.querySelector('.asm-var-to').value)   || 0;
+    const step = from <= to ? 1 : -1;
+    const range = [];
+    for (let n = from; step > 0 ? n <= to : n >= to; n += step) range.push(n);
+    return { v: row.dataset.var, range };
+  });
+  let combos = [{}];
+  vars.forEach(({ v, range }) => {
+    const next = [];
+    combos.forEach(c => range.forEach(val => next.push({ ...c, [v]: val })));
+    combos = next;
+  });
+  return combos.map(combo => {
+    let n = name;
+    Object.entries(combo).forEach(([v, val]) =>
+      n = n.replace(new RegExp(`\\{${v}\\}`, 'g'), String(val)));
+    return _makeSig(n, type, len, markers, ddr, periodMult);
+  });
+}
 
 function submitAddSignal() {
   const name = document.getElementById('asmName').value.trim();
   const type = document.getElementById('asmType').value;
-  if (!name && type !== 'spacer') return;
+  if (!name && type !== 'spacer' && type !== 'group') return;
+  if (type !== 'group' && document.querySelectorAll('#asmVarRows .asm-var-row').length && !_validateVarRows()) return;
   if (!workingSpec) workingSpec = { signal: [] };
   const len = Math.max(_geo?.maxLen ?? 0, 8);
-  let sig;
-  switch (type) {
-    case 'clock_p': sig = { name, wave: 'p'.repeat(len) }; break;
-    case 'clock_n': sig = { name, wave: 'n'.repeat(len) }; break;
-    default:        sig = { name, wave: '0'.repeat(len) };
+  const markers = document.getElementById('asmEdge').checked;
+  const ddr     = markers && document.getElementById('asmDDR').checked;
+  let periodMult = 0;
+  if (type.startsWith('clock_')) {
+    const pRaw = document.getElementById('asmPeriod').value.trim();
+    if (pRaw) {
+      const resNs = getPeriodNs();
+      if (resNs > 0) {
+        const absNs = parseTimeToNs(pRaw);
+        periodMult = isNaN(absNs) ? (parseFloat(pRaw) || 0) : absNs / resNs;
+      } else {
+        periodMult = parseFloat(pRaw) || 0;
+      }
+    }
   }
   workingSpec.signal = workingSpec.signal || [];
-  workingSpec.signal.push(sig);
-  syncEditorFromSpec();
-  render();
+  if (type === 'group') {
+    workingSpec.signal.push({ group: name || 'Group', collapsed: false });
+    workingSpec.signal.push({ groupEnd: true });
+  } else if (!name) {
+    workingSpec.signal.push({});
+  } else {
+    _expandSignals(name, type, len, markers, ddr, periodMult).forEach(s => workingSpec.signal.push(s));
+  }
+  syncEditorFromSpec(); render(); pushHistory();
   closeAddSignalModal();
 }
 
 document.getElementById('btnAddSignal').addEventListener('click', openAddSignalModal);
-document.getElementById('btnConfig').addEventListener('click', openConfigModal);
 document.getElementById('asmCancel')   .addEventListener('click', closeAddSignalModal);
 document.getElementById('asmAdd')      .addEventListener('click', submitAddSignal);
 addSignalModal.addEventListener('click', e => { if (e.target === addSignalModal) closeAddSignalModal(); });
+document.getElementById('asmName').addEventListener('input', _updateVarRows);
+document.getElementById('asmVarRows').addEventListener('input', e => {
+  const el = e.target;
+  if (!el.classList.contains('asm-var-from') && !el.classList.contains('asm-var-to')) return;
+  const v = parseInt(el.value);
+  el.classList.toggle('asm-var-invalid', !(Number.isInteger(v) && v >= 0));
+});
 document.getElementById('asmName').addEventListener('keydown', e => {
   if (e.key === 'Enter') submitAddSignal();
   else if (e.key === 'Escape') closeAddSignalModal();
+});
+document.getElementById('asmType').addEventListener('change', e => {
+  const isClock = e.target.value.startsWith('clock_');
+  const isGroup = e.target.value === 'group';
+  document.getElementById('asmPeriodRow').style.display = isClock ? '' : 'none';
+  document.getElementById('asmEdgeRow').style.display = isClock ? '' : 'none';
+  if (!isClock) {
+    document.getElementById('asmPeriod').value = '';
+    document.getElementById('asmEdge').checked = false;
+    document.getElementById('asmDDRRow').style.display = 'none';
+    document.getElementById('asmDDR').checked = false;
+  }
+  if (isGroup) {
+    const vr = document.getElementById('asmVarRows');
+    vr.innerHTML = ''; vr.style.display = 'none';
+  }
+});
+document.getElementById('asmEdge').addEventListener('change', e => {
+  document.getElementById('asmDDRRow').style.display = e.target.checked ? '' : 'none';
+  if (!e.target.checked) document.getElementById('asmDDR').checked = false;
 });
 
 // ─── Constraint modal ─────────────────────────────────────────────────────────
@@ -2506,16 +4454,60 @@ document.getElementById('ctPreset').addEventListener('change', e => {
 document.getElementById('ctAdd').addEventListener('click', () => {
   if (!pendingConstraint) return;
   const label = document.getElementById('ctLabel').value.trim();
+
+  if (pendingConstraint.type === 'measure') {
+    const showVal = document.getElementById('ctShowValue').checked;
+    if (pendingConstraint.editMeasureIdx !== undefined) {
+      const m = workingSpec.measure[pendingConstraint.editMeasureIdx];
+      if (m) {
+        if (label) m.label = label; else delete m.label;
+        if (showVal) m.showValue = true; else delete m.showValue;
+      }
+      syncEditorFromSpec(); render(); pushHistory(); closeConstraintModal();
+    } else {
+      addMeasure(pendingConstraint.anchor, pendingConstraint.target, label, showVal);
+      closeConstraintModal();
+    }
+    return;
+  }
+
   if (pendingConstraint.editIdx !== undefined) {
-    const str = workingSpec.edge[pendingConstraint.editIdx];
-    const prefix = str.match(/^[A-Za-z0-9]+\s*[→>~-]+\s*[A-Za-z0-9]+/)?.[0];
-    if (prefix) workingSpec.edge[pendingConstraint.editIdx] = label ? `${prefix} ${label}` : prefix;
-    syncEditorFromSpec();
-    render();
-    closeConstraintModal();
+    const c = workingSpec.constraint?.[pendingConstraint.editIdx];
+    if (c) {
+      if (label) c.label = label; else delete c.label;
+      const valueStr = document.getElementById('ctValue').value.trim();
+      const showVal = document.getElementById('ctShowValue').checked;
+      let shouldPropagate = false;
+      if (valueStr) {
+        const valueNs = parseConstraintValueNs(valueStr);
+        if (valueNs === null) { alert('Invalid value. Use format like "5.6 ns" or "5.6".'); return; }
+        c.value = valueNs;
+        applyConstraintValue(c.p1, c.p2, valueNs);
+        shouldPropagate = true;
+      } else {
+        delete c.value;
+      }
+      if (showVal) c.showValue = true; else delete c.showValue;
+      if (shouldPropagate && c.p2) propagateConstraints(c.p2.signal);
+    }
+    syncEditorFromSpec(); render(); pushHistory(); closeConstraintModal();
   } else {
-    addConstraint(pendingConstraint.anchor, pendingConstraint.target, label);
-    closeConstraintModal();
+    const valueStr = document.getElementById('ctValue').value.trim();
+    const showVal = document.getElementById('ctShowValue').checked;
+    let valueNs = null;
+    if (valueStr) {
+      valueNs = parseConstraintValueNs(valueStr);
+      if (valueNs === null) { alert('Invalid value. Use format like "5.6 ns" or "5.6".'); return; }
+    }
+    _addConstraintRaw(pendingConstraint.anchor, pendingConstraint.target, label);
+    const c = workingSpec.constraint[workingSpec.constraint.length - 1];
+    if (valueNs != null) {
+      c.value = valueNs;
+      applyConstraintValue(pendingConstraint.anchor, pendingConstraint.target, valueNs);
+      propagateConstraints(pendingConstraint.target.signal);
+    }
+    if (showVal) c.showValue = true;
+    syncEditorFromSpec(); render(); pushHistory(); closeConstraintModal();
   }
 });
 document.getElementById('ctCancel').addEventListener('click', closeConstraintModal);
@@ -2530,32 +4522,41 @@ document.getElementById('ctLabel').addEventListener('keydown', e => {
 // ─── Signal context menu ───────────────────────────────────────────────────────
 let ctxSignalIdx = -1;
 let ctxEdgeIdx = -1;
+let ctxMeasureIdx = -1;
 waveCanvas.addEventListener('contextmenu', e => {
   e.preventDefault();
   if (!workingSpec || !_geo) return;
   const pos = canvasPos(e);
 
-  const edgeIdx = hitTestEdge(pos);
-  if (edgeIdx >= 0) {
-    ctxSignalIdx = -1; ctxEdgeIdx = edgeIdx;
-    document.getElementById('ctxSignalProps').style.display      = 'none';
-    document.getElementById('ctxDelete').style.display           = 'none';
-    document.getElementById('ctxEditConstraint').style.display   = 'block';
-    document.getElementById('ctxDeleteConstraint').style.display = 'block';
+  const showMenu = (items) => {
+    ['ctxSignalProps','ctxDuplicate','ctxDelete','ctxGroupRename','ctxGroupClock','ctxUngroup','ctxGroupDelete','ctxEditConstraint','ctxDeleteConstraint','ctxEditMeasure','ctxDeleteMeasure']
+      .forEach(id => document.getElementById(id).style.display = items.includes(id) ? 'block' : 'none');
     ctxMenu.style.left = e.clientX + 'px'; ctxMenu.style.top = e.clientY + 'px';
-    ctxMenu.style.display = 'block'; return;
+    ctxMenu.style.display = 'block';
+  };
+
+  const measIdx = hitTestMeasure(pos);
+  if (measIdx >= 0) {
+    ctxSignalIdx = -1; ctxEdgeIdx = -1; ctxMeasureIdx = measIdx;
+    showMenu(['ctxEditMeasure', 'ctxDeleteMeasure']); return;
   }
 
+  const edgeIdx = hitTestEdge(pos);
+  if (edgeIdx >= 0) {
+    ctxSignalIdx = -1; ctxEdgeIdx = edgeIdx; ctxMeasureIdx = -1;
+    showMenu(['ctxEditConstraint', 'ctxDeleteConstraint']); return;
+  }
+
+  const grpHit = hitTest(hitRegions.groups, pos.x, pos.y);
+  if (grpHit && isGroupHdr(workingSpec.signal[grpHit.idx])) {
+    ctxSignalIdx = grpHit.idx; ctxEdgeIdx = -1; ctxMeasureIdx = -1;
+    showMenu(['ctxGroupRename', 'ctxGroupClock', 'ctxUngroup', 'ctxGroupDelete']); return;
+  }
   const lbl = hitTest(hitRegions.labels, pos.x, pos.y) || hitTest(hitRegions.handles, pos.x, pos.y);
   if (!lbl) { ctxMenu.style.display = 'none'; return; }
-  ctxSignalIdx = lbl.idx; ctxEdgeIdx = -1;
+  ctxSignalIdx = lbl.idx; ctxEdgeIdx = -1; ctxMeasureIdx = -1;
   const sigHasName = !!workingSpec.signal[lbl.idx]?.name;
-  document.getElementById('ctxSignalProps').style.display      = sigHasName ? 'block' : 'none';
-  document.getElementById('ctxDelete').style.display           = 'block';
-  document.getElementById('ctxEditConstraint').style.display   = 'none';
-  document.getElementById('ctxDeleteConstraint').style.display = 'none';
-  ctxMenu.style.left = e.clientX + 'px'; ctxMenu.style.top = e.clientY + 'px';
-  ctxMenu.style.display = 'block';
+  showMenu([...(sigHasName ? ['ctxSignalProps', 'ctxDuplicate'] : []), 'ctxDelete']);
 });
 
 document.getElementById('ctxSignalProps').addEventListener('click', () => {
@@ -2565,13 +4566,109 @@ document.getElementById('ctxSignalProps').addEventListener('click', () => {
   openSigPropsModal(idx);
 });
 
+document.getElementById('ctxDuplicate').addEventListener('click', () => {
+  if (ctxSignalIdx < 0 || !workingSpec) return;
+  const idx = ctxSignalIdx;
+  ctxSignalIdx = -1; ctxMenu.style.display = 'none';
+  duplicateSignal(idx);
+});
+
 document.getElementById('ctxDelete').addEventListener('click', () => {
   if (ctxSignalIdx < 0 || !workingSpec) return;
   workingSpec.signal.splice(ctxSignalIdx, 1);
   ctxSignalIdx = -1;
   ctxMenu.style.display = 'none';
-  syncEditorFromSpec();
-  render();
+  syncEditorFromSpec(); render(); pushHistory();
+});
+
+document.getElementById('ctxGroupRename').addEventListener('click', () => {
+  if (ctxSignalIdx < 0 || !workingSpec) return;
+  const idx = ctxSignalIdx;
+  ctxSignalIdx = -1; ctxMenu.style.display = 'none';
+  setTimeout(() => _openGroupRenameInline(idx), 0);
+});
+
+document.getElementById('ctxGroupClock').addEventListener('click', () => {
+  if (ctxSignalIdx < 0 || !workingSpec) return;
+  const idx = ctxSignalIdx;
+  ctxSignalIdx = -1; ctxMenu.style.display = 'none';
+  const sig = workingSpec.signal[idx];
+  const DCOLORS_HEX = ['#e06424','#24bc94','#c438ac','#acc420'];
+  let di = 0;
+  for (const s of workingSpec.signal) { if (s === sig) break; if (isGroupHdr(s) && s.clock) di++; }
+  document.getElementById('gclkLabel').value = sig.clock || '';
+  const _gResNs = getPeriodNs();
+  if (_gResNs > 0 && sig.period != null) {
+    const _gUnit = (workingSpec?.timing?.unit || 'ns').toLowerCase();
+    const _fromNs = { fs: 1e6, ps: 1e3, ns: 1, us: 1e-3, ms: 1e-6, s: 1e-9 };
+    const _gAbsInUnit = ((sig.period || 1) * _gResNs) * (_fromNs[_gUnit] || 1);
+    document.getElementById('gclkPeriod').value = parseFloat(_gAbsInUnit.toPrecision(8)) + ' ' + _gUnit;
+  } else {
+    document.getElementById('gclkPeriod').value = sig.period != null ? sig.period : '';
+  }
+  document.getElementById('gclkColor').value = sig.clockColor || DCOLORS_HEX[di % DCOLORS_HEX.length];
+  document.getElementById('gclkLines').checked = sig.clockLines !== false;
+  document.getElementById('groupClockModal').style.display = 'flex';
+  document.getElementById('groupClockModal')._sigIdx = idx;
+  setTimeout(() => document.getElementById('gclkLabel').focus(), 0);
+});
+
+document.getElementById('gclkCancel').addEventListener('click', () => {
+  document.getElementById('groupClockModal').style.display = 'none';
+});
+
+document.getElementById('gclkApply').addEventListener('click', () => {
+  const modal = document.getElementById('groupClockModal');
+  const idx = modal._sigIdx;
+  if (idx == null || !workingSpec) { modal.style.display = 'none'; return; }
+  const label = document.getElementById('gclkLabel').value.trim();
+  const _gclkRaw = document.getElementById('gclkPeriod').value.trim();
+  const sig = workingSpec.signal[idx];
+  if (label) {
+    sig.clock = label;
+    const _gclkResNs = getPeriodNs();
+    let _gclkMult = 1;
+    if (_gclkRaw) {
+      if (_gclkResNs > 0) {
+        const _absNs = parseTimeToNs(_gclkRaw);
+        _gclkMult = isNaN(_absNs) ? (parseFloat(_gclkRaw) || 1) : _absNs / _gclkResNs;
+      } else {
+        _gclkMult = parseFloat(_gclkRaw) || 1;
+      }
+    }
+    sig.period = (_gclkMult > 0) ? parseFloat(_gclkMult.toPrecision(8)) : 1;
+    sig.clockColor = document.getElementById('gclkColor').value;
+    if (document.getElementById('gclkLines').checked) delete sig.clockLines;
+    else sig.clockLines = false;
+  } else {
+    delete sig.clock; delete sig.period; delete sig.clockColor; delete sig.clockLines;
+  }
+  modal.style.display = 'none';
+  syncEditorFromSpec(); render(); pushHistory();
+});
+
+document.getElementById('groupClockModal').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('gclkApply').click();
+  if (e.key === 'Escape') document.getElementById('gclkCancel').click();
+});
+
+document.getElementById('ctxUngroup').addEventListener('click', () => {
+  if (ctxSignalIdx < 0 || !workingSpec) return;
+  const idx = ctxSignalIdx;
+  ctxSignalIdx = -1; ctxMenu.style.display = 'none';
+  const endIdx = findGroupEnd(idx);
+  workingSpec.signal.splice(endIdx, 1); // remove groupEnd
+  workingSpec.signal.splice(idx, 1);    // remove groupHdr
+  syncEditorFromSpec(); render(); pushHistory();
+});
+
+document.getElementById('ctxGroupDelete').addEventListener('click', () => {
+  if (ctxSignalIdx < 0 || !workingSpec) return;
+  const idx = ctxSignalIdx;
+  ctxSignalIdx = -1; ctxMenu.style.display = 'none';
+  const endIdx = findGroupEnd(idx);
+  workingSpec.signal.splice(idx, endIdx - idx + 1);
+  syncEditorFromSpec(); render(); pushHistory();
 });
 
 document.getElementById('ctxEditConstraint').addEventListener('click', () => {
@@ -2588,6 +4685,20 @@ document.getElementById('ctxDeleteConstraint').addEventListener('click', () => {
   ctxEdgeIdx = -1;
 });
 
+document.getElementById('ctxEditMeasure').addEventListener('click', () => {
+  if (ctxMeasureIdx < 0 || !workingSpec) return;
+  ctxMenu.style.display = 'none';
+  openEditMeasureModal(ctxMeasureIdx);
+  ctxMeasureIdx = -1;
+});
+
+document.getElementById('ctxDeleteMeasure').addEventListener('click', () => {
+  if (ctxMeasureIdx < 0 || !workingSpec) return;
+  ctxMenu.style.display = 'none';
+  deleteMeasure(ctxMeasureIdx);
+  ctxMeasureIdx = -1;
+});
+
 document.getElementById('cellEditor').addEventListener('click', e => {
   const btn = e.target.closest('.cell-btn');
   if (!btn) return;
@@ -2598,8 +4709,24 @@ document.getElementById('cellEditor').addEventListener('click', e => {
     if (bp.style.display === 'flex') document.getElementById('busLabel').focus();
     return;
   }
-  applyCellState(ce._sigIdx, ce._cellIdx, btn.dataset.state);
+  if (ce._cellFrom != null && ce._cellTo != null && ce._cellFrom !== ce._cellTo)
+    applyCellStateRange(ce._sigIdx, ce._cellFrom, ce._cellTo, btn.dataset.state);
+  else
+    applyCellState(ce._sigIdx, ce._cellIdx, btn.dataset.state);
   hideCellEditor();
+});
+
+document.getElementById('ceInsertBefore').addEventListener('click', () => {
+  const ce = document.getElementById('cellEditor');
+  insertWaveCell(ce._sigIdx, ce._cellIdx, false); hideCellEditor();
+});
+document.getElementById('ceInsertAfter').addEventListener('click', () => {
+  const ce = document.getElementById('cellEditor');
+  insertWaveCell(ce._sigIdx, ce._cellIdx, true); hideCellEditor();
+});
+document.getElementById('ceDelete').addEventListener('click', () => {
+  const ce = document.getElementById('cellEditor');
+  deleteWaveCell(ce._sigIdx, ce._cellIdx); hideCellEditor();
 });
 
 document.getElementById('busApply').addEventListener('click', () => {
@@ -2626,8 +4753,9 @@ function openConfigModal() {
   if (!workingSpec) return;
   const t = workingSpec.timing || {};
   const c = workingSpec.config || {};
+  document.getElementById('cfgTitle').value  = workingSpec.title || '';
   document.getElementById('cfgUnit').value   = t.unit   || 'ns';
-  document.getElementById('cfgPeriod').value = t.period != null ? t.period : '';
+  document.getElementById('cfgPeriod').value = (t.resolution ?? t.period) != null ? (t.resolution ?? t.period) : '';
   document.getElementById('cfgTrise').value  = t.trise  != null ? t.trise  : '';
   document.getElementById('cfgHscale').value = c.hscale != null ? c.hscale : '';
   document.getElementById('configModal').style.display = 'flex';
@@ -2636,14 +4764,32 @@ function openConfigModal() {
 function closeConfigModal() { document.getElementById('configModal').style.display = 'none'; }
 function applyConfig() {
   if (!workingSpec) return;
+  const title  = document.getElementById('cfgTitle').value.trim();
+  if (title) workingSpec.title = title; else delete workingSpec.title;
   const unit   = document.getElementById('cfgUnit').value;
   const period = parseFloat(document.getElementById('cfgPeriod').value);
   const trise  = parseFloat(document.getElementById('cfgTrise').value);
   const hscale = parseFloat(document.getElementById('cfgHscale').value);
   if (period > 0) {
+    const _toNs = { fs: 1e-6, ps: 1e-3, ns: 1, us: 1e3, ms: 1e6, s: 1e9 };
+    const oldResNs = getPeriodNs();
+    const newResNs = period * (_toNs[unit.toLowerCase()] || 1);
+    if (oldResNs > 0 && newResNs > 0 && Math.abs(oldResNs - newResNs) > 1e-15) {
+      const ratio = oldResNs / newResNs;
+      (workingSpec.signal || []).forEach(s => {
+        if (!s?.name) return;
+        const newPeriod = parseFloat(((s.period ?? 1) * ratio).toPrecision(8));
+        if (newPeriod === 1) delete s.period; else s.period = newPeriod;
+        if (s.phase != null) s.phase = parseFloat((s.phase * ratio).toPrecision(8));
+      });
+      // keep visual scale: more cells per screen → proportionally smaller zoom
+      zoom = Math.max(0.001, Math.min(6, zoom / ratio));
+      _saveZoom();
+    }
     if (!workingSpec.timing) workingSpec.timing = {};
-    workingSpec.timing.unit   = unit;
-    workingSpec.timing.period = period;
+    workingSpec.timing.unit       = unit;
+    workingSpec.timing.resolution = period;
+    delete workingSpec.timing.period;
     if (trise > 0) workingSpec.timing.trise = trise;
     else delete workingSpec.timing.trise;
   } else {
@@ -2656,8 +4802,7 @@ function applyConfig() {
     delete workingSpec.config?.hscale;
     if (workingSpec.config && !Object.keys(workingSpec.config).length) delete workingSpec.config;
   }
-  syncEditorFromSpec();
-  render();
+  syncEditorFromSpec(); render(); pushHistory();
   closeConfigModal();
 }
 document.getElementById('cfgApply').addEventListener('click', applyConfig);
@@ -2678,8 +4823,24 @@ function openSigPropsModal(sigIdx) {
   if (!sig?.name) return;
   _sigPropsIdx = sigIdx;
   document.getElementById('spName').value   = sig.name;
-  document.getElementById('spPeriod').value = sig.period != null ? sig.period : '';
+  const _spResNs = getPeriodNs();
+  if (_spResNs > 0 && sig.period != null) {
+    const _absNs = (sig.period || 1) * _spResNs;
+    const _unit = (workingSpec?.timing?.unit || 'ns').toLowerCase();
+    const _fromNs = { fs: 1e6, ps: 1e3, ns: 1, us: 1e-3, ms: 1e-6, s: 1e-9 };
+    const _absInUnit = _absNs * (_fromNs[_unit] || 1);
+    document.getElementById('spPeriod').value = parseFloat(_absInUnit.toPrecision(8)) + ' ' + _unit;
+  } else {
+    document.getElementById('spPeriod').value = sig.period != null ? sig.period : '';
+  }
   document.getElementById('spPhase').value  = sig.phase  != null ? sig.phase  : '';
+  const isClock = sig.wave && /[pPnNQR]/.test(sig.wave);
+  document.getElementById('spEdgeRow').style.display = isClock ? '' : 'none';
+  const hasMarkers = isClock && /[PNQR]/.test(sig.wave);
+  const isDDR = isClock && /[QR]/.test(sig.wave);
+  if (isClock) document.getElementById('spEdge').checked = hasMarkers;
+  document.getElementById('spDDRRow').style.display = (isClock && hasMarkers) ? '' : 'none';
+  if (isClock) document.getElementById('spDDR').checked = isDDR;
   document.getElementById('sigPropsModal').style.display = 'flex';
   setTimeout(() => document.getElementById('spName').focus(), 40);
 }
@@ -2689,20 +4850,52 @@ function applySigProps() {
   const sig = workingSpec.signal[_sigPropsIdx];
   if (!sig) return;
   const name   = document.getElementById('spName').value.trim();
-  const period = parseFloat(document.getElementById('spPeriod').value);
+  const periodRaw = document.getElementById('spPeriod').value.trim();
   const phase  = parseFloat(document.getElementById('spPhase').value);
   if (name && name !== sig.name) {
-    if (workingSpec.node) Object.values(workingSpec.node).forEach(nd => { if (nd.signal === sig.name) nd.signal = name; });
+    if (Array.isArray(workingSpec.constraint)) {
+      workingSpec.constraint.forEach(c => {
+        if (c.p1?.signal === sig.name) c.p1.signal = name;
+        if (c.p2?.signal === sig.name) c.p2.signal = name;
+      });
+    }
     sig.name = name;
   }
-  if (period > 0) sig.period = period; else delete sig.period;
+  if (periodRaw) {
+    const resNs = getPeriodNs();
+    if (resNs > 0) {
+      const absNs = parseTimeToNs(periodRaw);
+      const mult = isNaN(absNs) ? parseFloat(periodRaw) : absNs / resNs;
+      if (mult > 0) sig.period = parseFloat(mult.toPrecision(8)); else delete sig.period;
+    } else {
+      const mult = parseFloat(periodRaw);
+      if (mult > 0) sig.period = mult; else delete sig.period;
+    }
+  } else {
+    delete sig.period;
+  }
   if (phase)      sig.phase  = phase;  else delete sig.phase;
-  syncEditorFromSpec();
-  render();
+  propagateConstraints(sig.name);
+  if (sig.wave && /[pPnNQR]/.test(sig.wave) && document.getElementById('spEdgeRow').style.display !== 'none') {
+    const markers = document.getElementById('spEdge').checked;
+    const ddr     = markers && document.getElementById('spDDR').checked;
+    if (ddr) {
+      sig.wave = sig.wave.replace(/[pP]/g, 'Q').replace(/[nN]/g, 'R').replace(/Q/g, 'Q').replace(/R/g, 'R');
+    } else if (markers) {
+      sig.wave = sig.wave.replace(/[pPQ]/g, 'P').replace(/[nNR]/g, 'N');
+    } else {
+      sig.wave = sig.wave.replace(/[pPQ]/g, 'p').replace(/[nNR]/g, 'n');
+    }
+  }
+  syncEditorFromSpec(); render(); pushHistory();
   closeSigPropsModal();
 }
 document.getElementById('spApply').addEventListener('click', applySigProps);
 document.getElementById('spCancel').addEventListener('click', closeSigPropsModal);
+document.getElementById('spEdge').addEventListener('change', e => {
+  document.getElementById('spDDRRow').style.display = e.target.checked ? '' : 'none';
+  if (!e.target.checked) document.getElementById('spDDR').checked = false;
+});
 document.getElementById('sigPropsModal').addEventListener('click', e => { if (e.target === document.getElementById('sigPropsModal')) closeSigPropsModal(); });
 ['spName','spPeriod','spPhase'].forEach(id => {
   document.getElementById(id).addEventListener('keydown', e => {
@@ -2711,13 +4904,43 @@ document.getElementById('sigPropsModal').addEventListener('click', e => { if (e.
   });
 });
 
+// ─── Drag-and-drop file loading ────────────────────────────────────────────────
+document.addEventListener('dragover', e => {
+  if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }
+});
+document.addEventListener('drop', e => {
+  e.preventDefault();
+  const file = e.dataTransfer.files[0];
+  if (!file || !file.name.endsWith('.json')) return;
+  _confirmLoadFile(file);
+});
+
+document.getElementById('dcCancel').addEventListener('click', () => {
+  _pendingDropFile = null;
+  document.getElementById('dirtyConfirmModal').style.display = 'none';
+});
+document.getElementById('dcDiscard').addEventListener('click', () => {
+  const file = _pendingDropFile; _pendingDropFile = null;
+  document.getElementById('dirtyConfirmModal').style.display = 'none';
+  if (file) _loadFile(file);
+});
+document.getElementById('dcSave').addEventListener('click', () => {
+  saveDiagram();
+  const file = _pendingDropFile; _pendingDropFile = null;
+  document.getElementById('dirtyConfirmModal').style.display = 'none';
+  if (file) _loadFile(file);
+});
+
 // ─── Boot ──────────────────────────────────────────────────────────────────────
 if (localStorage.getItem('wavetool_json_visible') === '1') {
   edPane.style.display  = 'flex';
   divider.style.display = 'block';
-  document.getElementById('btnToggleJSON').classList.add('tool-active');
+  document.getElementById('miToggleJSON').classList.add('checked');
 }
 render();
+if (workingSpec) pushHistory();
+_dirty = false;
+_updateSaveBtn();
 
 </script>
 </body>
