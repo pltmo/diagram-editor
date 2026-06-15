@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Timing Diagram Editor</title>
+<title>WaveTool — Timing Diagram Editor</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap');
 
@@ -433,7 +433,6 @@
       <code>"edge": ["A→B label"]</code><br>
       <code>"node": {"A":{"signal":"CLK","cycle":2}}</code><br><br>
       <b>Per-signal:</b> <code>"period"</code> cell width multiplier &nbsp;<code>"phase"</code> x offset<br>
-      <b>Global:</b> <code>"hscale"</code><br><br>
       <b>Timing:</b><br>
       <code>"timing": {"unit":"ns","period":10,"trise":1}</code><br>
       units: <code>fs ps ns us ms s</code><br>
@@ -461,7 +460,7 @@
   <div class="modal">
     <div class="modal-hdr">Add Signal</div>
     <div class="modal-body">
-      <label>Name
+      <label id="asmNameRow">Name
         <input id="asmName" type="text" placeholder="e.g. CLK, SDO{i}, adc{i}_miso{j}">
       </label>
       <div id="asmVarRows"></div>
@@ -470,6 +469,7 @@
           <option value="clock_p">Clock — rising edge (p)</option>
           <option value="clock_n">Clock — falling edge (n)</option>
           <option value="digital" selected>Digital (std_logic)</option>
+          <option value="spacer">Spacer / Divider</option>
           <option value="group">Signal Group</option>
         </select>
       </label>
@@ -483,6 +483,10 @@
       <label id="asmDDRRow" style="display:none; flex-direction:row; align-items:center; gap:8px; padding-left:20px">
         <input type="checkbox" id="asmDDR" style="width:auto; accent-color:var(--accent)">
         DDR (both edges)
+      </label>
+      <label id="asmDividerRow" style="display:none; flex-direction:row; align-items:center; gap:8px">
+        <input type="checkbox" id="asmDivider" style="width:auto; accent-color:var(--accent)">
+        Divider line
       </label>
     </div>
     <div class="modal-foot">
@@ -533,6 +537,7 @@
 <div id="ctxMenu" class="ctx-menu" style="display:none">
   <div id="ctxSignalProps"       class="ctx-item"        style="display:none">Signal Properties…</div>
   <div id="ctxDuplicate"         class="ctx-item"        style="display:none">Duplicate Signal</div>
+  <div id="ctxMoveOutOfGroup"    class="ctx-item"        style="display:none">Move out of Group</div>
   <div id="ctxDelete"            class="ctx-item danger" style="display:none">Delete Signal</div>
   <div id="ctxGroupRename"       class="ctx-item"        style="display:none">Rename Group…</div>
   <div id="ctxGroupClock"        class="ctx-item"        style="display:none">Clock Domain…</div>
@@ -628,9 +633,6 @@
       <label>Rise / fall time <span style="font-size:10px;color:var(--muted)">(trise, same unit — scales bus chamfer)</span>
         <input id="cfgTrise" type="number" min="0" step="any" placeholder="e.g. 1">
       </label>
-      <label>hscale <span style="font-size:10px;color:var(--muted)">(horizontal cell width multiplier)</span>
-        <input id="cfgHscale" type="number" min="0.25" max="10" step="0.25" placeholder="1">
-      </label>
     </div>
     <div class="modal-foot">
       <button id="cfgCancel">Cancel</button>
@@ -660,6 +662,10 @@
       <label id="spDDRRow" style="display:none; flex-direction:row; align-items:center; gap:8px; padding-left:20px">
         <input type="checkbox" id="spDDR" style="width:auto; accent-color:var(--accent)">
         DDR (both edges)
+      </label>
+      <label id="spColorRow" style="flex-direction:row; align-items:center; gap:8px">
+        <input type="checkbox" id="spColorEnable" style="width:auto; accent-color:var(--accent)">
+        Custom color <input type="color" id="spColor" value="#4d9ef7" style="width:36px; height:24px; padding:0; border:none; cursor:pointer; border-radius:3px; vertical-align:middle">
       </label>
     </div>
     <div class="modal-foot">
@@ -732,10 +738,10 @@ const THEMES = {
   light: {
     bg:    '#ffffff', grid: '#e8edf5', gridL: '#d0d8e8',
     label: '#374151', title: '#0f172a',
-    clk: '#1d4ed8', high: '#1d4ed8', low: '#1d4ed8',
-    data: '#1d4ed8', bus: '#1d4ed8',
-    x: '#b91c1c', z: '#1d4ed8', edge: '#92400e', meas: '#406880',
-    busColors: ['#b03040','#907020','#1a7030','#0a7878','#1040b0','#6020a0','#485060','#904018'],
+    clk: '#2563eb', high: '#2563eb', low: '#2563eb',
+    data: '#2563eb', bus: '#2563eb',
+    x: '#dc2626', z: '#2563eb', edge: '#b45309', meas: '#406880',
+    busColors: ['#d04050','#b08820','#259050','#0898a0','#3b52c8','#8828a8','#6070a0','#c06030'],
     waveW: 1.5,
   }
 };
@@ -1104,9 +1110,11 @@ function drawAll(ctx, T, spec, signals, maxLen, CELL_W, W, H, signalTopY, gapAft
     }
 
     if (!sig?.name) {
-      ctx.strokeStyle = T.grid; ctx.lineWidth = 0.5; ctx.setLineDash([3, 5]);
-      ctx.beginPath(); ctx.moveTo(LABEL_W + 4, topY + SIG_H/2); ctx.lineTo(W - 4, topY + SIG_H/2); ctx.stroke();
-      ctx.setLineDash([]); return;
+      if (sig?.divider) {
+        ctx.strokeStyle = T.label + '50'; ctx.lineWidth = 1; ctx.setLineDash([]);
+        ctx.beginPath(); ctx.moveTo(0, topY + SIG_H/2); ctx.lineTo(W, topY + SIG_H/2); ctx.stroke();
+      }
+      return;
     }
     sigRowY[sig.name] = topY;
     ctx.font = `500 11px ${MONO}`; ctx.fillStyle = T.label; ctx.textAlign = 'right';
@@ -1117,7 +1125,8 @@ function drawAll(ctx, T, spec, signals, maxLen, CELL_W, W, H, signalTopY, gapAft
       ctx.beginPath();
       ctx.rect(LABEL_W, HEAD_H, maxLen * CELL_W, H - HEAD_H);
       ctx.clip();
-      drawWaveCanvas(ctx, sig, topY, CELL_W, T, slopeFrac, periodNs);
+      const sigT = sig.color ? { ...T, high: sig.color, low: sig.color, clk: sig.color, z: sig.color } : T;
+      drawWaveCanvas(ctx, sig, topY, CELL_W, sigT, slopeFrac, periodNs, maxLen);
       ctx.restore();
     }
   });
@@ -1302,7 +1311,7 @@ function drawDelayBracket(ctx, x1, y1, x2, y2, midY, label, T) {
   ctx.textAlign = 'left';
 }
 
-function drawWaveCanvas(ctx, sig, topY, CELL_W, T, slopeFrac = null, periodNs = 0) {
+function drawWaveCanvas(ctx, sig, topY, CELL_W, T, slopeFrac = null, periodNs = 0, maxLen = 0) {
   const hi  = topY + 6;
   const lo  = topY + SIG_H - 6;
   const mid = topY + SIG_H / 2;
@@ -1444,14 +1453,25 @@ function drawWaveCanvas(ctx, sig, topY, CELL_W, T, slopeFrac = null, periodNs = 
     }
   }
 
-  // Pre-compute cell boundaries with forward clamping: a nudge that pushes a boundary past later
-  // cells leaves those later cells zero-width (skipped by x1<=x0 guard), so the visual transition
-  // stays at the nudged position rather than being collapsed back.
+  // Pre-compute cell boundaries, then apply directional clamping per nudge:
+  // positive nudge → forward-clamp subsequent cells (they'd go backward otherwise);
+  // negative nudge → backward-clamp preceding cells (they'd overshoot otherwise).
+  // The x1<=x0 guard in the draw loop skips zero-width cells, so the visual edge stays
+  // at the nudged position in both directions.
   const _bnd = [];
   for (let j = 0; j <= resolved.length; j++)
     _bnd[j] = LABEL_W + (phase + j * period) * CELL_W + (periodNs > 0 ? (sig.nudge?.[String(j)] ?? 0) / periodNs * CELL_W : 0);
-  for (let j = 1; j <= resolved.length; j++)
-    if (_bnd[j] < _bnd[j - 1]) _bnd[j] = _bnd[j - 1];
+  if (sig.nudge && periodNs > 0) {
+    for (const [key, nudgeNs] of Object.entries(sig.nudge)) {
+      const j = parseInt(key); if (isNaN(j)) continue;
+      const nudgePx = nudgeNs / periodNs * CELL_W;
+      if (nudgePx > 0) {
+        for (let k = j + 1; k <= resolved.length && _bnd[k] < _bnd[k - 1]; k++) _bnd[k] = _bnd[k - 1];
+      } else if (nudgePx < 0) {
+        for (let k = j - 1; k >= 0 && _bnd[k] > _bnd[k + 1]; k--) _bnd[k] = _bnd[k + 1];
+      }
+    }
+  }
 
   for (let i = 0; i < resolved.length; i++) {
     const ch = resolved[i];
@@ -1662,6 +1682,28 @@ function drawWaveCanvas(ctx, sig, topY, CELL_W, T, slopeFrac = null, periodNs = 
       }
       penX = x1; penY = exitY;
       prev = isLabel ? ch : 'd';
+    }
+  }
+
+  // Tail fill: extend last drawn state to diagram right edge
+  if (maxLen > 0 && resolved.length > 0) {
+    const tailEndX = LABEL_W + maxLen * CELL_W;
+    if (_bnd[resolved.length] < tailEndX) {
+      if ((prev === 'z' || prev === 'Z') && penX !== null) {
+        flush();
+        ctx.strokeStyle = T.z; ctx.lineWidth = T.waveW; ctx.setLineDash([4, 3]);
+        ctx.beginPath(); ctx.moveTo(penX, mid); ctx.lineTo(tailEndX, mid); ctx.stroke();
+        ctx.setLineDash([]);
+      } else if (penX !== null && (prev === 'd' || prev === '=' || /^[2-9]$/.test(prev || ''))) {
+        flush();
+        ctx.fillStyle = curBusColor + '1a';
+        ctx.fillRect(penX, hi, tailEndX - penX, lo - hi);
+        ctx.strokeStyle = curBusColor; ctx.lineWidth = T.waveW; ctx.setLineDash([]);
+        ctx.beginPath(); ctx.moveTo(penX, hi); ctx.lineTo(tailEndX, hi); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(penX, lo); ctx.lineTo(tailEndX, lo); ctx.stroke();
+      } else if (penX !== null && prev && prev !== 'x' && prev !== 'X') {
+        pen(tailEndX, penY, curColor ?? T.high);
+      }
     }
   }
 
@@ -1890,11 +1932,12 @@ function buildSVG(spec, signals, maxLen, CELL_W, W, H, T, signalTopY, gapAfter, 
     }
 
     if (!sig?.name) {
-      els.push(_line(LABEL_W+4,topY+SIG_H/2,W-4,topY+SIG_H/2,T.grid,0.5,'3 5')); return;
+      if (sig?.divider) els.push(_line(0, topY+SIG_H/2, W, topY+SIG_H/2, T.label+'50', 1, ''));
+      return;
     }
     sigRowY[sig.name] = topY;
     els.push(_txt(LABEL_W-8, topY+SIG_H/2+4, sig.name, T.label, 11, 500, 'end'));
-    if (sig.wave) buildWaveSVG(waveEls, sig, topY, CELL_W, T, slopeFrac, periodNs);
+    if (sig.wave) { const sigT = sig.color ? { ...T, high: sig.color, low: sig.color, clk: sig.color, z: sig.color } : T; buildWaveSVG(waveEls, sig, topY, CELL_W, sigT, slopeFrac, periodNs, maxLen); }
   });
   els.push(`<g clip-path="url(#waveArea)">${waveEls.join('\n')}</g>`);
 
@@ -2117,7 +2160,7 @@ function buildSVG(spec, signals, maxLen, CELL_W, W, H, T, signalTopY, gapAfter, 
   return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">\n${els.join('\n')}\n</svg>`;
 }
 
-function buildWaveSVG(els, sig, topY, CELL_W, T, slopeFrac = null, periodNs = 0) {
+function buildWaveSVG(els, sig, topY, CELL_W, T, slopeFrac = null, periodNs = 0, maxLen = 0) {
   const hi = topY+6, lo = topY+SIG_H-6, mid = topY+SIG_H/2;
   const period = sig.period || 1;
   const phase  = sig.phase  || 0;
@@ -2321,12 +2364,30 @@ function buildWaveSVG(els, sig, topY, CELL_W, T, slopeFrac = null, periodNs = 0)
       prev=isLabel?ch:'d';
     }
   }
+
+  // Tail fill: extend last drawn state to diagram right edge
+  if (maxLen > 0 && resolved.length > 0) {
+    const tailEndX = LABEL_W + maxLen * CELL_W;
+    const lastBndX = _bnd[resolved.length];
+    if (lastBndX < tailEndX && lastY !== null) {
+      if (prev === 'z' || prev === 'Z') {
+        hln(lastBndX, tailEndX, mid, T.z, '5 3');
+      } else if (prev === 'd' || prev === '=' || /^[2-9]$/.test(prev || '')) {
+        els.push(_tag('rect', { x: lastBndX, y: hi, width: tailEndX - lastBndX, height: lo - hi, fill: curBusColor + '1a', stroke: 'none' }));
+        hln(lastBndX, tailEndX, hi, curBusColor);
+        hln(lastBndX, tailEndX, lo, curBusColor);
+      } else if (prev && prev !== 'x' && prev !== 'X') {
+        const tailColor = '01hHpPnN'.includes(prev) ? (lastY <= mid ? T.high : T.low) : T.high;
+        hln(lastBndX, tailEndX, lastY, tailColor);
+      }
+    }
+  }
 }
 
 // ───── js/export.js ─────
-function _renderPNG(spec, themeName, scale, minH = 0, maxLenOverride = null) {
+function _renderPNG(spec, themeName, scale, minH = 0, maxLenOverride = null, exportZoom = 1) {
   const T = THEMES[themeName] || THEMES.light;
-  const hscale = spec.config?.hscale || 1;
+  const hscale = exportZoom;
   const geo = geometry(spec, hscale);
   if (maxLenOverride !== null) {
     geo.maxLen = Math.max(1, maxLenOverride);
@@ -2343,24 +2404,24 @@ function _renderPNG(spec, themeName, scale, minH = 0, maxLenOverride = null) {
   return canvas.toDataURL('image/png');
 }
 
-function exportPNG(spec, themeName, scale, minH = 0, maxLenOverride = null) {
+function exportPNG(spec, themeName, scale, minH = 0, maxLenOverride = null, exportZoom = 1) {
   const a = document.createElement('a');
   a.download = 'timing_diagram.png';
-  a.href = _renderPNG(spec, themeName, scale, minH, maxLenOverride);
+  a.href = _renderPNG(spec, themeName, scale, minH, maxLenOverride, exportZoom);
   a.click();
 }
 
-function previewPNG(spec, themeName, scale, minH = 0, maxLenOverride = null) {
+function previewPNG(spec, themeName, scale, minH = 0, maxLenOverride = null, exportZoom = 1) {
   const win = window.open('', '_blank');
   if (!win) return;
-  const dataUrl = _renderPNG(spec, themeName, scale, minH, maxLenOverride);
+  const dataUrl = _renderPNG(spec, themeName, scale, minH, maxLenOverride, exportZoom);
   win.document.write(`<!doctype html><html><head><title>Preview</title><style>body{margin:0;background:#111;display:flex;justify-content:center;align-items:flex-start;padding:16px;box-sizing:border-box}img{max-width:100%;height:auto;display:block}</style></head><body><img src="${dataUrl}"></body></html>`);
   win.document.close();
 }
 
-function exportSVG(spec, themeName, minH = 0, maxLenOverride = null) {
+function exportSVG(spec, themeName, minH = 0, maxLenOverride = null, exportZoom = 1) {
   const T = THEMES[themeName] || THEMES.light;
-  const hscale = spec.config?.hscale || 1;
+  const hscale = exportZoom;
   const geo = geometry(spec, hscale);
   if (maxLenOverride !== null) {
     geo.maxLen = Math.max(1, maxLenOverride);
@@ -2378,7 +2439,7 @@ function exportSVG(spec, themeName, minH = 0, maxLenOverride = null) {
 
 // ───── js/app.js ─────
 const DEFAULT = `{
-  "config": { "hscale": 2 },
+  "config": { "zoom": 2 },
   "signal": [
     { "name": "clock", "wave": "PPPPPPPP" }
   ]
@@ -2457,7 +2518,14 @@ function _loadFile(file) {
       const spec = JSON.parse(ev.target.result);
       migrateConstraints(spec);
       workingSpec = spec;
-      zoom = spec.config?.zoom || 1.0;
+      const _lh = spec.config?.hscale || 1;
+      zoom = (spec.config?.zoom || 1.0) * _lh;
+      if (spec.config?.hscale) {
+        delete spec.config.hscale;
+        if (!spec.config) spec.config = {};
+        spec.config.zoom = parseFloat(zoom.toPrecision(4));
+      }
+      userMaxLen = spec.config?.maxLen ?? null;
       _hist.length = 0; _histIdx = -1;
       syncEditorFromSpec(); render();
       _hist.push(JSON.stringify(workingSpec)); _histIdx = 0;
@@ -2561,6 +2629,52 @@ const rightHandle    = document.getElementById('diagramRightHandle');
     rr.active = false;
     rightHandle.classList.remove('active');
     document.body.style.cursor = '';
+    _saveMaxLen(); pushHistory();
+  });
+
+  rightHandle.addEventListener('dblclick', e => {
+    e.preventDefault();
+    const pNs = getPeriodNs();
+    const curLen = _geo ? _geo.maxLen : (userMaxLen || 8);
+    const unit = (workingSpec?.timing?.unit || '').toLowerCase();
+    const curVal = pNs > 0
+      ? parseFloat((curLen * pNs).toPrecision(10)) + (unit ? ' ' + unit : ' ns')
+      : String(curLen);
+
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.value = curVal;
+    inp.title = 'Duration — e.g. "100 ns", "200"';
+    const rr2 = rightHandle.getBoundingClientRect();
+    Object.assign(inp.style, {
+      position: 'fixed', right: (window.innerWidth - rr2.left + 4) + 'px',
+      top: (rr2.top + rr2.height / 2 - 13) + 'px',
+      width: '110px', height: '26px', padding: '0 6px', fontSize: '12px',
+      background: '#2a3045', color: '#dce2f0', border: '1px solid #4d9ef7',
+      borderRadius: '4px', zIndex: 9999, outline: 'none', boxSizing: 'border-box',
+    });
+    document.body.appendChild(inp);
+    inp.select();
+
+    const commit = () => {
+      const raw = inp.value.trim();
+      if (raw) {
+        let cells;
+        if (pNs > 0) {
+          const ns = parseTimeToNs(raw);
+          cells = isNaN(ns) ? parseInt(raw) : Math.round(ns / pNs);
+        } else {
+          cells = parseInt(raw);
+        }
+        if (cells > 0) { userMaxLen = cells; _saveMaxLen(); render(); pushHistory(); }
+      }
+      inp.remove();
+    };
+    inp.addEventListener('keydown', ev => {
+      if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
+      else if (ev.key === 'Escape') inp.remove();
+    });
+    inp.addEventListener('blur', commit);
   });
 }
 
@@ -2594,6 +2708,11 @@ function parseSpecFromEditor() {
   try {
     workingSpec = parseSpec(sourceEl.value);
     if (migrateConstraints(workingSpec)) syncEditorFromSpec();
+    const _ph = workingSpec.config?.hscale || 1;
+    if (workingSpec.config?.zoom != null) zoom = workingSpec.config.zoom * _ph;
+    else if (_ph !== 1) zoom = zoom * _ph;
+    if (workingSpec.config?.hscale) { delete workingSpec.config.hscale; if (!Object.keys(workingSpec.config).length) delete workingSpec.config; }
+    userMaxLen = workingSpec.config?.maxLen ?? null;
     errorBar.textContent = ''; errorBar.classList.remove('visible');
     return true;
   } catch(e) {
@@ -2619,8 +2738,7 @@ function render() {
   }
 
   const T = THEMES.dark;
-  const hscale = (spec.config?.hscale || 1) * zoom;
-  const geo = geometry(spec, hscale);
+  const geo = geometry(spec, zoom);
   if (userMaxLen !== null) {
     geo.maxLen = Math.max(1, userMaxLen);
     geo.W = Math.max(LABEL_W + geo.maxLen * geo.CELL_W + PAD_R, 300);
@@ -2701,6 +2819,13 @@ function _saveZoom() {
 function zoomIn()  { zoom = Math.min(zoom * 1.25, 6);   _saveZoom(); render(); }
 function zoomOut() { zoom = Math.max(zoom / 1.25, 0.3); _saveZoom(); render(); }
 
+function _saveMaxLen() {
+  if (!workingSpec || userMaxLen === null) return;
+  if (!workingSpec.config) workingSpec.config = {};
+  workingSpec.config.maxLen = userMaxLen;
+  syncEditorFromSpec(); _dirty = true; _updateSaveBtn();
+}
+
 function zoomFit() {
   if (!workingSpec || !_geo) return;
   const pane = document.getElementById('canvasPane');
@@ -2709,10 +2834,9 @@ function zoomFit() {
   if (availW <= 0) return;
   const maxLen = _geo.maxLen;
   if (maxLen <= 0) return;
-  const baseHscale = workingSpec.config?.hscale || 1;
   // Floor so CELL_W * maxLen never exceeds available space after rounding
   const targetCellPx = Math.floor((availW - LABEL_W - PAD_R) / maxLen);
-  zoom = Math.max(0.001, Math.min(6, targetCellPx / 40 / baseHscale));
+  zoom = Math.max(0.001, Math.min(6, targetCellPx / 40));
   _saveZoom(); render();
   document.getElementById('diagramScrollX').scrollLeft = 0;
 }
@@ -2728,11 +2852,10 @@ function zoomToRange(canvasX1, canvasX2) {
   const c1 = Math.max(0, (x1 - LABEL_W) / CELL_W);
   const c2 = (x2 - LABEL_W) / CELL_W;
   if (c2 - c1 <= 0) return;
-  const baseHscale = workingSpec.config?.hscale || 1;
   const targetCellPx = (availW - LABEL_W - PAD_R) / (c2 - c1);
-  zoom = Math.max(0.05, Math.min(6, targetCellPx / 40 / baseHscale));
+  zoom = Math.max(0.05, Math.min(6, targetCellPx / 40));
   _saveZoom(); render();
-  const newCELL_W = Math.round(40 * baseHscale * zoom);
+  const newCELL_W = Math.round(40 * zoom);
   document.getElementById('diagramScrollX').scrollLeft = Math.max(0, LABEL_W + c1 * newCELL_W - 20);
 }
 
@@ -2744,7 +2867,7 @@ function doExportPNG() {
   if (!workingSpec) return;
   const theme = document.getElementById('exportTheme').value;
   const scale = parseInt(document.getElementById('pngScale').value) || 1;
-  exportPNG(workingSpec, theme, scale, userDiagramH, userMaxLen);
+  exportPNG(workingSpec, theme, scale, userDiagramH, userMaxLen, zoom);
   closeExportModal();
 }
 
@@ -2752,12 +2875,12 @@ function doPreviewPNG() {
   if (!workingSpec) return;
   const theme = document.getElementById('exportTheme').value;
   const scale = parseInt(document.getElementById('pngScale').value) || 1;
-  previewPNG(workingSpec, theme, scale, userDiagramH, userMaxLen);
+  previewPNG(workingSpec, theme, scale, userDiagramH, userMaxLen, zoom);
 }
 
 function doExportSVG() {
   if (!workingSpec) return;
-  exportSVG(workingSpec, document.getElementById('exportTheme').value, userDiagramH, userMaxLen);
+  exportSVG(workingSpec, document.getElementById('exportTheme').value, userDiagramH, userMaxLen, zoom);
   closeExportModal();
 }
 
@@ -2797,8 +2920,14 @@ function edgesForSig(sig) {
   const _bnd = [];
   for (let j = 0; j <= res.length; j++)
     _bnd[j] = LABEL_W + (phase + j * period) * CELL_W + _nud(j);
-  for (let j = 1; j <= res.length; j++)
-    if (_bnd[j] < _bnd[j - 1]) _bnd[j] = _bnd[j - 1];
+  if (sig.nudge && periodNs > 0) {
+    for (const [key, nudgeNs] of Object.entries(sig.nudge)) {
+      const j = parseInt(key); if (isNaN(j)) continue;
+      const nudgePx = nudgeNs / periodNs * CELL_W;
+      if (nudgePx > 0) { for (let k = j+1; k <= res.length && _bnd[k] < _bnd[k-1]; k++) _bnd[k] = _bnd[k-1]; }
+      else if (nudgePx < 0) { for (let k = j-1; k >= 0 && _bnd[k] > _bnd[k+1]; k--) _bnd[k] = _bnd[k+1]; }
+    }
+  }
   const edges = [];
   for (let i = 0; i <= res.length; i++) {
     const x0 = _bnd[i];
@@ -3112,8 +3241,14 @@ function snapToConstraintPoint(pos) {
   const _bndC = [];
   for (let j = 0; j <= res.length; j++)
     _bndC[j] = LABEL_W + (phase + j * period) * CELL_W + _nud(j);
-  for (let j = 1; j <= res.length; j++)
-    if (_bndC[j] < _bndC[j - 1]) _bndC[j] = _bndC[j - 1];
+  if (sig.nudge && periodNs > 0) {
+    for (const [key, nudgeNs] of Object.entries(sig.nudge)) {
+      const j = parseInt(key); if (isNaN(j)) continue;
+      const nudgePx = nudgeNs / periodNs * CELL_W;
+      if (nudgePx > 0) { for (let k = j+1; k <= res.length && _bndC[k] < _bndC[k-1]; k++) _bndC[k] = _bndC[k-1]; }
+      else if (nudgePx < 0) { for (let k = j-1; k >= 0 && _bndC[k] > _bndC[k+1]; k--) _bndC[k] = _bndC[k+1]; }
+    }
+  }
   const pts = [];
 
   for (let i = 0; i <= res.length; i++) {
@@ -3254,17 +3389,53 @@ function applyConstraintValue(anchorNode, targetNode, valueNs) {
     const rounded = Math.round(newPhase * 10000) / 10000;
     if (Math.abs(rounded) < 0.0001) delete targetSig.phase; else targetSig.phase = rounded;
   } else {
-    // Data: nudge the specific edge; phase unchanged
-    const targetBaseNs = ((targetSig.phase || 0) + targetNode.cycle * targetPeriod + targetOff) * periodNs;
-    const nudgeNs = desiredNs - targetBaseNs;
-    const rounded = Math.round(nudgeNs * 10000) / 10000;
-    const key = String(targetNode.cycle);
-    if (!targetSig.nudge) targetSig.nudge = {};
-    if (Math.abs(rounded) < 0.0001) {
-      delete targetSig.nudge[key];
-      if (Object.keys(targetSig.nudge).length === 0) delete targetSig.nudge;
+    // Data signal: backfill wave to nearest integer cell, then fractional nudge
+    const targetPhase = targetSig.phase || 0;
+    if (!targetNode.anchor && targetSig.wave && Number.isInteger(targetNode.cycle)) {
+      const oldCycle = targetNode.cycle;
+      const desiredCycleRaw = (desiredNs / periodNs - targetPhase) / targetPeriod;
+      const newCycle = Math.round(desiredCycleRaw);
+      const fractNudgeNs = (desiredCycleRaw - newCycle) * targetPeriod * periodNs;
+
+      if (newCycle !== oldCycle) {
+        const res = resolveWave(targetSig.wave);
+        if (newCycle >= 0 && newCycle <= res.length) {
+          if (newCycle < oldCycle) {
+            // Move backward: extend "after" char (res[oldCycle]) into preceding cells
+            const fillChar = res[oldCycle] ?? res[oldCycle - 1] ?? '0';
+            for (let i = Math.max(0, newCycle); i < Math.min(oldCycle, res.length); i++)
+              res[i] = fillChar;
+          } else {
+            // Move forward: extend "before" char (res[oldCycle-1]) into following cells
+            const fillChar = oldCycle > 0 ? res[oldCycle - 1] : res[0];
+            for (let i = Math.max(0, oldCycle); i < Math.min(newCycle, res.length); i++)
+              res[i] = fillChar;
+          }
+          targetSig.wave = res.join('');
+        }
+        if (targetSig.nudge) {
+          delete targetSig.nudge[String(oldCycle)];
+          if (!Object.keys(targetSig.nudge).length) delete targetSig.nudge;
+        }
+        targetNode.cycle = newCycle;
+      }
+
+      const key = String(newCycle);
+      const rounded = Math.round(fractNudgeNs * 10000) / 10000;
+      if (!targetSig.nudge) targetSig.nudge = {};
+      if (Math.abs(rounded) < 0.0001) { delete targetSig.nudge[key]; }
+      else { targetSig.nudge[key] = rounded; }
+      if (!Object.keys(targetSig.nudge).length) delete targetSig.nudge;
     } else {
-      targetSig.nudge[key] = rounded;
+      // Fallback: plain nudge (anchored points, non-integer cycles, no wave)
+      const targetBaseNs = (targetPhase + targetNode.cycle * targetPeriod + targetOff) * periodNs;
+      const nudgeNs = desiredNs - targetBaseNs;
+      const rounded = Math.round(nudgeNs * 10000) / 10000;
+      const key = String(targetNode.cycle);
+      if (!targetSig.nudge) targetSig.nudge = {};
+      if (Math.abs(rounded) < 0.0001) { delete targetSig.nudge[key]; }
+      else { targetSig.nudge[key] = rounded; }
+      if (!Object.keys(targetSig.nudge).length) delete targetSig.nudge;
     }
   }
   return true;
@@ -3692,6 +3863,13 @@ function applyCellState(sigIdx, cellIdx, state) {
     sig.data.splice(dataIdx, 1);
     while (sig.data.length && !sig.data[sig.data.length - 1]) sig.data.pop();
     if (!sig.data.length) delete sig.data;
+  } else if (!isBus(oldChar) && isBus(state)) {
+    // Splitting a bus run: insert empty data entry at the new bus head position
+    const dataIdx = chars.slice(0, cellIdx).filter(isBus).length;
+    if (!sig.data) sig.data = [];
+    sig.data.splice(dataIdx, 0, '');
+    while (sig.data.length && !sig.data[sig.data.length - 1]) sig.data.pop();
+    if (!sig.data.length) delete sig.data;
   }
   chars[cellIdx] = state;
   sig.wave = chars.join('');
@@ -3739,14 +3917,30 @@ function showCellEditor(sigIdx, pos) {
 
   const isBus = c => c === '=' || /^[2-9]$/.test(c);
   const sig = workingSpec.signal[sigIdx];
-  const ch = sig?.wave?.[cellIdx];
+  const rawCh = sig?.wave?.[cellIdx];
   const busPanel = document.getElementById('busPanel');
-  if (isBus(ch)) {
-    const dataIdx = (sig.wave.split('').slice(0, cellIdx)).filter(isBus).length;
+
+  // For continuation cells (.), walk backward to find the bus run head
+  let runHeadIdx = null;
+  let effectiveCh = rawCh;
+  if (rawCh === '.') {
+    const chars = sig.wave.split('');
+    for (let i = cellIdx - 1; i >= 0; i--) {
+      if (chars[i] === ' ') continue;
+      if (isBus(chars[i])) { runHeadIdx = i; effectiveCh = chars[i]; break; }
+      if (chars[i] !== '.') break;
+    }
+  }
+  ce._runHeadIdx = runHeadIdx;
+
+  if (isBus(effectiveCh)) {
+    const headIdx = runHeadIdx ?? cellIdx;
+    const dataIdx = sig.wave.split('').slice(0, headIdx).filter(isBus).length;
     document.getElementById('busLabel').value = sig.data?.[dataIdx] || '';
-    document.getElementById('busColor').value = /^[2-9]$/.test(ch) ? ch : '=';
+    document.getElementById('busColor').value = /^[2-9]$/.test(effectiveCh) ? effectiveCh : '=';
     busPanel.style.display = 'flex';
   } else {
+    ce._runHeadIdx = null;
     busPanel.style.display = 'none';
     document.getElementById('busLabel').value = '';
     document.getElementById('busColor').value = '=';
@@ -3807,6 +4001,16 @@ function findGroupEnd(startIdx) {
     else if (isGroupEnd(sigs[i])) { depth--; if (depth === 0) return i; }
   }
   return sigs.length - 1;
+}
+
+function getParentGroupIdx(sigIdx) {
+  let depth = 0;
+  for (let i = sigIdx - 1; i >= 0; i--) {
+    const s = workingSpec.signal[i];
+    if (isGroupEnd(s)) depth++;
+    else if (isGroupHdr(s)) { if (depth === 0) return i; depth--; }
+  }
+  return -1;
 }
 
 function toggleGroupCollapsed(sigIdx) {
@@ -4284,6 +4488,9 @@ function openAddSignalModal() {
   document.getElementById('asmEdge').checked = false;
   document.getElementById('asmDDRRow').style.display = 'none';
   document.getElementById('asmDDR').checked = false;
+  document.getElementById('asmDividerRow').style.display = 'none';
+  document.getElementById('asmDivider').checked = false;
+  document.getElementById('asmNameRow').style.display = '';
   const vr = document.getElementById('asmVarRows');
   vr.innerHTML = ''; vr.style.display = 'none';
   addSignalModal.style.display = 'flex';
@@ -4399,13 +4606,17 @@ function submitAddSignal() {
     }
   }
   workingSpec.signal = workingSpec.signal || [];
-  if (type === 'group') {
+  if (type === 'spacer') {
+    const divider = document.getElementById('asmDivider').checked;
+    workingSpec.signal.push(divider ? { divider: true } : {});
+  } else if (type === 'group') {
     workingSpec.signal.push({ group: name || 'Group', collapsed: false });
     workingSpec.signal.push({ groupEnd: true });
   } else if (!name) {
     workingSpec.signal.push({});
   } else {
-    _expandSignals(name, type, len, markers, ddr, periodMult).forEach(s => workingSpec.signal.push(s));
+    const waveCells = periodMult > 1 ? Math.max(Math.ceil(len / periodMult), 1) : len;
+    _expandSignals(name, type, waveCells, markers, ddr, periodMult).forEach(s => workingSpec.signal.push(s));
   }
   syncEditorFromSpec(); render(); pushHistory();
   closeAddSignalModal();
@@ -4429,15 +4640,19 @@ document.getElementById('asmName').addEventListener('keydown', e => {
 document.getElementById('asmType').addEventListener('change', e => {
   const isClock = e.target.value.startsWith('clock_');
   const isGroup = e.target.value === 'group';
+  const isSpacer = e.target.value === 'spacer';
+  document.getElementById('asmNameRow').style.display = isSpacer ? 'none' : '';
   document.getElementById('asmPeriodRow').style.display = isClock ? '' : 'none';
   document.getElementById('asmEdgeRow').style.display = isClock ? '' : 'none';
+  document.getElementById('asmDividerRow').style.display = isSpacer ? '' : 'none';
   if (!isClock) {
     document.getElementById('asmPeriod').value = '';
     document.getElementById('asmEdge').checked = false;
     document.getElementById('asmDDRRow').style.display = 'none';
     document.getElementById('asmDDR').checked = false;
   }
-  if (isGroup) {
+  if (!isSpacer) document.getElementById('asmDivider').checked = false;
+  if (isGroup || isSpacer) {
     const vr = document.getElementById('asmVarRows');
     vr.innerHTML = ''; vr.style.display = 'none';
   }
@@ -4503,8 +4718,8 @@ document.getElementById('ctAdd').addEventListener('click', () => {
     const c = workingSpec.constraint[workingSpec.constraint.length - 1];
     if (valueNs != null) {
       c.value = valueNs;
-      applyConstraintValue(pendingConstraint.anchor, pendingConstraint.target, valueNs);
-      propagateConstraints(pendingConstraint.target.signal);
+      applyConstraintValue(c.p1, c.p2, valueNs);
+      propagateConstraints(c.p2.signal);
     }
     if (showVal) c.showValue = true;
     syncEditorFromSpec(); render(); pushHistory(); closeConstraintModal();
@@ -4529,7 +4744,7 @@ waveCanvas.addEventListener('contextmenu', e => {
   const pos = canvasPos(e);
 
   const showMenu = (items) => {
-    ['ctxSignalProps','ctxDuplicate','ctxDelete','ctxGroupRename','ctxGroupClock','ctxUngroup','ctxGroupDelete','ctxEditConstraint','ctxDeleteConstraint','ctxEditMeasure','ctxDeleteMeasure']
+    ['ctxSignalProps','ctxDuplicate','ctxMoveOutOfGroup','ctxDelete','ctxGroupRename','ctxGroupClock','ctxUngroup','ctxGroupDelete','ctxEditConstraint','ctxDeleteConstraint','ctxEditMeasure','ctxDeleteMeasure']
       .forEach(id => document.getElementById(id).style.display = items.includes(id) ? 'block' : 'none');
     ctxMenu.style.left = e.clientX + 'px'; ctxMenu.style.top = e.clientY + 'px';
     ctxMenu.style.display = 'block';
@@ -4556,7 +4771,8 @@ waveCanvas.addEventListener('contextmenu', e => {
   if (!lbl) { ctxMenu.style.display = 'none'; return; }
   ctxSignalIdx = lbl.idx; ctxEdgeIdx = -1; ctxMeasureIdx = -1;
   const sigHasName = !!workingSpec.signal[lbl.idx]?.name;
-  showMenu([...(sigHasName ? ['ctxSignalProps', 'ctxDuplicate'] : []), 'ctxDelete']);
+  const inGroup = getParentGroupIdx(lbl.idx) >= 0;
+  showMenu([...(sigHasName ? ['ctxSignalProps', 'ctxDuplicate'] : []), ...(inGroup ? ['ctxMoveOutOfGroup'] : []), 'ctxDelete']);
 });
 
 document.getElementById('ctxSignalProps').addEventListener('click', () => {
@@ -4652,6 +4868,18 @@ document.getElementById('groupClockModal').addEventListener('keydown', e => {
   if (e.key === 'Escape') document.getElementById('gclkCancel').click();
 });
 
+document.getElementById('ctxMoveOutOfGroup').addEventListener('click', () => {
+  if (ctxSignalIdx < 0 || !workingSpec) return;
+  const idx = ctxSignalIdx;
+  ctxSignalIdx = -1; ctxMenu.style.display = 'none';
+  const parentIdx = getParentGroupIdx(idx);
+  if (parentIdx < 0) return;
+  const [sig] = workingSpec.signal.splice(idx, 1);
+  const endIdx = findGroupEnd(parentIdx);
+  workingSpec.signal.splice(endIdx + 1, 0, sig);
+  syncEditorFromSpec(); render(); pushHistory();
+});
+
 document.getElementById('ctxUngroup').addEventListener('click', () => {
   if (ctxSignalIdx < 0 || !workingSpec) return;
   const idx = ctxSignalIdx;
@@ -4733,7 +4961,8 @@ document.getElementById('busApply').addEventListener('click', () => {
   const ce = document.getElementById('cellEditor');
   const label = document.getElementById('busLabel').value.trim();
   const colorChar = document.getElementById('busColor').value;
-  applyBusCellState(ce._sigIdx, ce._cellIdx, colorChar, label);
+  const effectiveIdx = ce._runHeadIdx ?? ce._cellIdx;
+  applyBusCellState(ce._sigIdx, effectiveIdx, colorChar, label);
   hideCellEditor();
 });
 
@@ -4757,7 +4986,6 @@ function openConfigModal() {
   document.getElementById('cfgUnit').value   = t.unit   || 'ns';
   document.getElementById('cfgPeriod').value = (t.resolution ?? t.period) != null ? (t.resolution ?? t.period) : '';
   document.getElementById('cfgTrise').value  = t.trise  != null ? t.trise  : '';
-  document.getElementById('cfgHscale').value = c.hscale != null ? c.hscale : '';
   document.getElementById('configModal').style.display = 'flex';
   setTimeout(() => document.getElementById('cfgPeriod').focus(), 40);
 }
@@ -4769,7 +4997,6 @@ function applyConfig() {
   const unit   = document.getElementById('cfgUnit').value;
   const period = parseFloat(document.getElementById('cfgPeriod').value);
   const trise  = parseFloat(document.getElementById('cfgTrise').value);
-  const hscale = parseFloat(document.getElementById('cfgHscale').value);
   if (period > 0) {
     const _toNs = { fs: 1e-6, ps: 1e-3, ns: 1, us: 1e3, ms: 1e6, s: 1e9 };
     const oldResNs = getPeriodNs();
@@ -4795,20 +5022,13 @@ function applyConfig() {
   } else {
     delete workingSpec.timing;
   }
-  if (hscale > 0) {
-    if (!workingSpec.config) workingSpec.config = {};
-    workingSpec.config.hscale = hscale;
-  } else {
-    delete workingSpec.config?.hscale;
-    if (workingSpec.config && !Object.keys(workingSpec.config).length) delete workingSpec.config;
-  }
   syncEditorFromSpec(); render(); pushHistory();
   closeConfigModal();
 }
 document.getElementById('cfgApply').addEventListener('click', applyConfig);
 document.getElementById('cfgCancel').addEventListener('click', closeConfigModal);
 document.getElementById('configModal').addEventListener('click', e => { if (e.target === document.getElementById('configModal')) closeConfigModal(); });
-['cfgPeriod','cfgTrise','cfgHscale'].forEach(id => {
+['cfgPeriod','cfgTrise'].forEach(id => {
   document.getElementById(id).addEventListener('keydown', e => {
     if (e.key === 'Enter') applyConfig();
     else if (e.key === 'Escape') closeConfigModal();
@@ -4841,6 +5061,8 @@ function openSigPropsModal(sigIdx) {
   if (isClock) document.getElementById('spEdge').checked = hasMarkers;
   document.getElementById('spDDRRow').style.display = (isClock && hasMarkers) ? '' : 'none';
   if (isClock) document.getElementById('spDDR').checked = isDDR;
+  document.getElementById('spColorEnable').checked = !!sig.color;
+  document.getElementById('spColor').value = sig.color || '#4d9ef7';
   document.getElementById('sigPropsModal').style.display = 'flex';
   setTimeout(() => document.getElementById('spName').focus(), 40);
 }
@@ -4875,6 +5097,9 @@ function applySigProps() {
     delete sig.period;
   }
   if (phase)      sig.phase  = phase;  else delete sig.phase;
+  const colorEnabled = document.getElementById('spColorEnable').checked;
+  const colorVal = document.getElementById('spColor').value;
+  if (colorEnabled && colorVal) sig.color = colorVal; else delete sig.color;
   propagateConstraints(sig.name);
   if (sig.wave && /[pPnNQR]/.test(sig.wave) && document.getElementById('spEdgeRow').style.display !== 'none') {
     const markers = document.getElementById('spEdge').checked;
