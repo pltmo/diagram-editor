@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WaveTool — Timing Diagram Editor</title>
+<title>Wave Editor</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap');
 
@@ -370,7 +370,7 @@
 <body>
 
 <header>
-  <h1>Wave <span>Editor</span></h1>
+  <h1>Wave<span> Editor</span></h1>
 
   <div class="menubar">
     <div class="menu-root" id="menuFile">
@@ -1206,6 +1206,10 @@ function drawAll(ctx, T, spec, signals, maxLen, CELL_W, W, H, signalTopY, gapAft
           }
           const fy = levelY(effectiveCh, hi, lo, mid2);
           ny = rail ? (rail === 'lo' ? lo : hi) : (fy !== null ? fy : mid2);
+          if (effectiveCh !== ch && !nd.anchor && slopeFrac != null) {
+            const destY = levelY(ch, hi, lo, mid2);
+            if (destY !== null && Math.abs(ny - destY) < 1) nx = x0 + busSlope;
+          }
         }
       }
       return { x: nx, y: ny, signal: nd.signal };
@@ -2015,6 +2019,10 @@ function buildSVG(spec, signals, maxLen, CELL_W, W, H, T, signalTopY, gapAfter, 
           }
           const fy = levelY(effectiveCh, hi, lo, mid2);
           ny = rail ? (rail === 'lo' ? lo : hi) : (fy ?? mid2);
+          if (effectiveCh !== ch && !nd.anchor && slopeFrac != null) {
+            const destY = levelY(ch, hi, lo, mid2);
+            if (destY !== null && Math.abs(ny - destY) < 1) nx = x0 + busSlope;
+          }
         }
       }
       return {x: nx, y: ny, signal: nd.signal};
@@ -3514,8 +3522,19 @@ function computeEdgeHitRegions() {
         const prevIsBus = prevCh && (prevCh==='d'||prevCh==='D'||prevCh==='='||/^[2-9]$/.test(prevCh));
         ny = (!prevIsBus && prevCh) ? (levelY(prevCh, hi, lo, mid2) ?? mid2) : mid2;
       } else {
-        const fy = levelY(ch, hi, lo, mid2);
+        const ci = Math.floor(nd.cycle);
+        let effectiveCh = ch;
+        if ('01hHlL'.includes(ch) && Number.isInteger(nd.cycle) && !nd.anchor) {
+          const prevCh = ci > 0 ? res[ci - 1] : null;
+          if (prevCh && '01hHlL'.includes(prevCh) && levelY(prevCh, hi, lo, mid2) !== levelY(ch, hi, lo, mid2))
+            effectiveCh = prevCh;
+        }
+        const fy = levelY(effectiveCh, hi, lo, mid2);
         ny = (fy !== null && fy !== mid2 && rail) ? (rail === 'lo' ? lo : hi) : (fy ?? mid2);
+        if (effectiveCh !== ch && !nd.anchor && slopeFrac != null) {
+          const destY = levelY(ch, hi, lo, mid2);
+          if (destY !== null && Math.abs(ny - destY) < 1) nx = x0 + busSlope;
+        }
       }
     }
     return { x: nx, y: ny, signal: nd.signal };
