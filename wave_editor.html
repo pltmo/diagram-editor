@@ -123,6 +123,23 @@
   }
   .error-bar.visible { display: block; }
 
+  .file-error-toast {
+    position: fixed;
+    top: 54px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 9px 16px;
+    font-size: 12px;
+    color: var(--danger);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #2a1a1a;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+    z-index: 1000;
+    display: none;
+  }
+  .file-error-toast.visible { display: block; }
+
   .help {
     padding: 10px 13px 13px;
     border-top: 1px solid var(--border);
@@ -138,6 +155,7 @@
     border-radius: 2px;
     font-family: 'Roboto Mono', monospace;
     font-size: 10px;
+    word-break: break-all;
   }
 
   .divider {
@@ -415,6 +433,7 @@
   </div>
 </header>
 <input type="file" id="fileOpenInput" accept=".json,.svg,.png" style="display:none">
+<div class="file-error-toast" id="fileErrorToast"></div>
 
 <div class="main">
   <div class="editor-pane" id="editorPane" style="display:none">
@@ -429,14 +448,21 @@
       capitals add an edge marker arrow &nbsp;<code>.</code> repeats<br>
       <code>=</code> bus+label &nbsp;<code>2</code>–<code>9</code> colored bus+label &nbsp;<code>d</code> continue<br>
       labels consumed in order from <code>"data":[]</code><br><br>
-      <b>Timing arrows:</b><br>
-      <code>"edge": ["A→B label"]</code><br>
-      <code>"node": {"A":{"signal":"CLK","cycle":2}}</code><br><br>
+      <b>Constraints (timing arrows):</b><br>
+      <code>"constraint": [{"p1":{"signal":"CLK","cycle":2},"p2":{"signal":"D","cycle":3},"label":"tsu","value":1.4,"showValue":true}]</code><br>
+      <code>p1</code>/<code>p2</code> optional <code>"anchor":"s"|"e"</code> for bus/data start or end<br><br>
+      <b>Measurements:</b><br>
+      <code>"measure": [{"p1":{...},"p2":{...},"label":"..."}]</code><br><br>
       <b>Per-signal:</b> <code>"period"</code> cell width multiplier &nbsp;<code>"phase"</code> x offset<br>
+      <code>"nudge": {"3":0.4}</code> per-cell-boundary offset, in timing units &nbsp;<code>"color":"#rrggbb"</code> override<br><br>
+      <b>Signal groups:</b><br>
+      <code>{"group":"Name","collapsed":false}</code> ... <code>{"groupEnd":true}</code><br>
+      clock domain on group header: <code>"clock":"CLK","period":10,"clockColor":"#...","clockLines":true</code><br><br>
       <b>Timing:</b><br>
-      <code>"timing": {"unit":"ns","period":10,"trise":1}</code><br>
+      <code>"timing": {"unit":"ns","resolution":10,"trise":1}</code><br>
       units: <code>fs ps ns us ms s</code><br>
-      <code>"trise"</code> sets bus/X transition width in same units — scales chamfer with zoom, makes measure tool snap to stable-data edges
+      <code>"trise"</code> sets bus/X transition width in same units — scales chamfer with zoom, makes measure tool snap to stable-data edges<br><br>
+      <b>Diagram:</b> <code>"title"</code> at top level &nbsp;<code>"config": {"zoom":2,"maxLen":40}</code>
     </div>
   </div>
 
@@ -2629,6 +2655,14 @@ function openDiagram() {
 
 let _pendingDropFile = null;
 
+let _fileErrorTimer = null;
+function _showFileError(msg) {
+  fileErrorToast.textContent = msg;
+  fileErrorToast.classList.add('visible');
+  clearTimeout(_fileErrorTimer);
+  _fileErrorTimer = setTimeout(() => fileErrorToast.classList.remove('visible'), 5000);
+}
+
 function _applyLoadedSpec(spec) {
   migrateConstraints(spec);
   workingSpec = spec;
@@ -2649,10 +2683,7 @@ function _applyLoadedSpec(spec) {
 function _loadFile(file) {
   const name = file.name.toLowerCase();
   const reader = new FileReader();
-  reader.onerror = () => {
-    errorBar.textContent = 'Could not open file: read error';
-    errorBar.classList.add('visible');
-  };
+  reader.onerror = () => _showFileError('Could not open file: read error');
   if (name.endsWith('.png')) {
     reader.onload = ev => {
       try {
@@ -2660,8 +2691,7 @@ function _loadFile(file) {
         if (!spec) throw new Error('no embedded source found in this PNG');
         _applyLoadedSpec(spec);
       } catch(err) {
-        errorBar.textContent = 'Could not open file: ' + err.message;
-        errorBar.classList.add('visible');
+        _showFileError('Could not open file: ' + err.message);
       }
     };
     reader.readAsArrayBuffer(file);
@@ -2678,8 +2708,7 @@ function _loadFile(file) {
       }
       _applyLoadedSpec(spec);
     } catch(err) {
-      errorBar.textContent = 'Could not open file: ' + err.message;
-      errorBar.classList.add('visible');
+      _showFileError('Could not open file: ' + err.message);
     }
   };
   reader.readAsText(file);
@@ -2719,6 +2748,7 @@ let renderTimer;
 // ─── DOM refs ──────────────────────────────────────────────────────────────────
 const sourceEl       = document.getElementById('source');
 const errorBar       = document.getElementById('errorBar');
+const fileErrorToast = document.getElementById('fileErrorToast');
 const waveCanvas     = document.getElementById('waveCanvas');
 const cursorCanvas   = document.getElementById('cursorCanvas');
 const edPane         = document.getElementById('editorPane');
@@ -2923,7 +2953,6 @@ function render() {
   signals.forEach((sig, i) => {
     const ty = signalTopY[i];
     if (ty === null || isGroupEnd(sig)) return;
-    if (!sig?.name && !isGroupHdr(sig)) return;
     const my = ty + SIG_H / 2;
     ctx.fillStyle = drag.active && drag.type === 'row' && drag.idx === i ? '#6a7898' : '#3a4258';
     [-3, 0, 3].forEach(dy => ctx.fillRect(3, my + dy - 0.6, 8, 1.2));
